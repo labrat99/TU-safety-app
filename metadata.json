@@ -1,0 +1,6 @@
+{
+  "name": "Tulane Chemical Safety SOP Generator",
+  "description": "Scan chemical label photos to extract OSHA/EHS safety guidelines and draft printable custom SOPs in Tulane OEHS compliance format.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

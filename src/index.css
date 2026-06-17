@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-neutral-50 text-neutral-900 font-sans antialiased selection:bg-emerald-100;
+  }
+}
+
+/* Custom Print Stylesheet to extract raw clean white Tulane SOP paper */
+@media print {
+  body {
+    background-color: white !important;
+    color: black !important;
+    font-size: 11pt !important;
+  }
+  
+  /* Hide all dashboard workspace clutter, headers, and floating widgets */
+  .no-print,
+  nav,
+  button,
+  input,
+  textarea,
+  select,
+  .print-hidden {
+    display: none !important;
+  }
+
+  /* Make sure the SOP paper card has full width, no shadows, no rounding */
+  .sop-card {
+    border: 1px solid #000 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background-color: transparent !important;
+    color: black !important;
+  }
+
+  /* Force headers and tables to render neatly on paper */
+  .printable-header-grid {
+    border: 1.5px solid #000000 !important;
+    display: table !important;
+    width: 100% !important;
+  }
+
+  .printable-row {
+    display: table-row !important;
+  }
+
+  .printable-cell {
+    display: table-cell !important;
+    border: 1px solid #000000 !important;
+    padding: 8px !important;
+    vertical-align: top !important;
+  }
+
+  /* Keep table borders visible on print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+  }
+
+  /* Allow page break inside text safely */
+  .sop-section {
+    page-break-inside: avoid;
+    margin-bottom: 12px !important;
+  }
+}
