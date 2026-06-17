@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { TulaneSOPData, SOPMetadata, SavedSOPRecord } from "./types";
 import { PRESET_CHEMICALS, PresetChemical } from "./presets";
 import { generateSOPPdf } from "./lib/pdfGenerator";
+import { generateLocalOfflineSop, OfflineSopCategory } from "./lib/offlineGenerator";
 
 export default function App() {
   // Navigation
@@ -124,6 +125,13 @@ export default function App() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
+
+  // Local offline draft wizard state
+  const [showOfflineWizard, setShowOfflineWizard] = useState(false);
+  const [offlineChemicalName, setOfflineChemicalName] = useState("");
+  const [offlineCasNumber, setOfflineCasNumber] = useState("");
+  const [offlineCategory, setOfflineCategory] = useState<OfflineSopCategory>("flammable");
+  const [offlineHazardsSelected, setOfflineHazardsSelected] = useState<string[]>(["Flammable"]);
   
   // Selected visual state
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -292,6 +300,38 @@ export default function App() {
     setSuccessMessage(`Pre-loaded complete EHS safety data sheet for ${preset.name}! You can now edit and print.`);
   };
 
+  // Trigger generation of a highly-compliant local SOP draft offline
+  const handleGenerateOfflineSop = () => {
+    if (!offlineChemicalName.trim()) {
+      setErrorMessage("Please enter a chemical name to generate an offline draft.");
+      return;
+    }
+
+    try {
+      const generatedSop = generateLocalOfflineSop(
+        offlineChemicalName,
+        offlineCasNumber,
+        offlineCategory,
+        offlineHazardsSelected,
+        {
+          department: metadata.department,
+          room: metadata.room,
+          principalInvestigator: metadata.principalInvestigator,
+          dsr: metadata.dsr,
+          dateCreated: metadata.dateCreated,
+        }
+      );
+      
+      setSopData(generatedSop);
+      setSuccessMessage(`Successfully generated custom offline lab safety SOP draft for ${generatedSop.chemicalName}!`);
+      setShowOfflineWizard(false);
+      setErrorMessage(null); // Clear any quota warnings
+    } catch (err: any) {
+      console.error("Offline generation failed:", err);
+      setErrorMessage(`Failed to generate offline draft: ${err.message}`);
+    }
+  };
+
   // Trigger Gemini AI full-stack scanning endpoint
   const scanChemicalLabel = async () => {
     if (!image) {
@@ -329,9 +369,16 @@ export default function App() {
       setSuccessMessage(`Successfully compiled federal safety standards and created customized Tulane SOP for ${data.sop.chemicalName}!`);
     } catch (err: any) {
       console.error("Analysis Error:", err);
-      setErrorMessage(
-        `Failed to generate SOP: ${err.message}`
-      );
+      const isQuota = err.message?.toLowerCase().includes("quota") || err.message?.toLowerCase().includes("exhausted") || err.message?.toLowerCase().includes("429") || err.message?.toLowerCase().includes("limit");
+      if (isQuota) {
+        setErrorMessage(
+          "Shared Gemini API limit reached (HTTP 429: Resource Exhausted). Direct AI scanning is active on free shared tiers. To bypass this, you can click Settings to configure a personal GEMINI_API_KEY, or launch our EHS-compliant Offline Safe Draft Wizard below!"
+        );
+      } else {
+        setErrorMessage(
+          `Failed to generate SOP: ${err.message}. (Hint: You can use our science-backed Offline Compliance Safe Mode below to draft yours instantly!)`
+        );
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -673,112 +720,265 @@ ${sopData.regulatoryReferences}
                 
                 {/* Panel 1: Photograph Capture or Upload */}
                 <div className="md:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col justify-between py-5 px-6">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-1 uppercase tracking-tight">
-                      <Camera className="w-4 h-4 text-emerald-700" />
-                      1. Scan Reagent Container Label
-                    </h3>
-                    <p className="text-xs text-slate-500 mb-4">
-                      Federal standards expect correct identification of safety components. Hold your reagent bottle's GHS safety shield in front of the camera or upload a direct picture.
-                    </p>
-
-                    {/* Camera Active Viewport */}
-                    {isCameraActive ? (
-                      <div className="relative bg-black rounded-lg overflow-hidden aspect-video max-w-lg mx-auto border-2 border-dashed border-amber-400">
-                        <video 
-                          ref={videoRef} 
-                          autoPlay 
-                          playsInline 
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 flex items-end justify-center pb-4 bg-gradient-to-t from-black/50 via-transparent to-transparent gap-3">
-                          <button
-                            type="button"
-                            onClick={capturePhoto}
-                            className="bg-amber-500 hover:bg-amber-600 text-emerald-950 px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-md"
-                          >
-                            <Check className="w-4 h-4" />
-                            Snapping Frame
-                          </button>
-                          <button
-                            type="button"
-                            onClick={stopCamera}
-                            className="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        
-                        {/* Drag Upload Area */}
-                        <label className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50 hover:bg-emerald-50/20 transition group">
-                          <Upload className="w-10 h-10 text-slate-400 group-hover:text-emerald-700 transition mb-2" />
-                          <span className="text-xs font-medium text-slate-700 group-hover:text-emerald-900">
-                            Upload Label Photo
-                          </span>
-                          <span className="text-[10px] text-slate-400 mt-1">
-                            PNG, JPG, or HEIC up to 10MB
-                          </span>
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={handleImageFileChange} 
-                            className="hidden" 
-                          />
-                        </label>
-
-                        {/* Interactive Mobile Camera Trigger */}
-                        <div 
-                          onClick={startCamera}
-                          className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50 hover:bg-emerald-50/20 transition group"
-                        >
-                          <Camera className="w-10 h-10 text-slate-400 group-hover:text-emerald-700 transition mb-2" />
-                          <span className="text-xs font-medium text-slate-700 group-hover:text-emerald-900">
-                            Use Device Camera
-                          </span>
-                          <span className="text-[10px] text-slate-400 mt-1 text-center">
-                            Ideal for physical smartphone scanning
-                          </span>
-                        </div>
-
-                      </div>
-                    )}
-
-                    {cameraError && (
-                      <p className="text-[11px] text-red-600 mt-2 italic font-medium">{cameraError}</p>
-                    )}
-
-                    {/* Image Preview Box */}
-                    {image && !isCameraActive && (
-                      <div className="mt-4 p-3 bg-slate-100 rounded-lg flex items-center justify-between gap-3 max-w-md border border-slate-200">
-                        <div className="flex items-center gap-3">
-                          <img 
-                            src={image} 
-                            alt="Chemical Label Preview" 
-                            className="w-12 h-12 rounded object-cover border border-slate-300 shadow-sm"
-                          />
+                  {showOfflineWizard ? (
+                    <div className="h-full flex flex-col justify-between">
+                      <div>
+                        <div className="flex justify-between items-start mb-2 border-b border-slate-100 pb-2">
                           <div>
-                            <span className="text-xs font-semibold text-emerald-900">Chemical Label Captured</span>
-                            <span className="block text-[10px] text-slate-400">Ready for GHS & OSHA protocol extraction</span>
+                            <h3 className="text-sm font-bold text-emerald-800 flex items-center gap-2 uppercase tracking-tight">
+                              <Shield className="w-4 h-4 text-emerald-700" />
+                              Offline SOP Draft Customizer
+                            </h3>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Bypass online AI limitations. Generate a fully structured Tulane EHS laboratory safety protocol draft locally.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowOfflineWizard(false)}
+                            className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded font-bold uppercase transition hover:cursor-pointer"
+                          >
+                            Back to Scan
+                          </button>
+                        </div>
+
+                        <div className="space-y-4 mt-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                Chemical IUPAC Name *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={offlineChemicalName}
+                                onChange={(e) => setOfflineChemicalName(e.target.value)}
+                                placeholder="e.g., Sodium Azide, Ethanol"
+                                className="w-full bg-slate-50 border border-slate-200 focus:border-emerald-600 focus:bg-white rounded px-2.5 py-1.5 text-xs text-slate-800 transition outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                CAS Number (Optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={offlineCasNumber}
+                                onChange={(e) => setOfflineCasNumber(e.target.value)}
+                                placeholder="e.g., 26628-22-8"
+                                className="w-full bg-slate-50 border border-slate-200 focus:border-emerald-600 focus:bg-white rounded px-2.5 py-1.5 text-xs text-slate-800 transition outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                              Select Reagent Primary Hazard Class *
+                            </label>
+                            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                              {[
+                                { id: "flammable", label: "Flammables", desc: "Solvents, volatile ethers", color: "border-amber-500 bg-amber-50/40 text-amber-950" },
+                                { id: "corrosive", label: "Corrosives", desc: "Mineral acids, bases", color: "border-emerald-600 bg-emerald-50/40 text-emerald-950" },
+                                { id: "toxic", label: "Toxics / Poisons", desc: "Carcinogens, acute toxins", color: "border-red-500 bg-red-50/40 text-red-950" },
+                                { id: "reactive", label: "Pyrophorics", desc: "Air-water reactives", color: "border-purple-500 bg-purple-50/40 text-purple-950" },
+                                { id: "general", label: "General Reagent", desc: "Standard chemicals", color: "border-slate-400 bg-slate-50 text-slate-900" },
+                              ].map((cat) => (
+                                <button
+                                  key={cat.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setOfflineCategory(cat.id as OfflineSopCategory);
+                                    const defaultHazards: Record<string, string[]> = {
+                                      flammable: ["Flammable", "Toxic"],
+                                      corrosive: ["Corrosive"],
+                                      toxic: ["Toxic"],
+                                      reactive: ["Reactive", "Flammable"],
+                                      general: ["Toxic"]
+                                    };
+                                    setOfflineHazardsSelected(defaultHazards[cat.id]);
+                                  }}
+                                  className={`flex flex-col items-center justify-center p-2 rounded-lg border-2 text-center transition cursor-pointer select-none h-18 ${
+                                    offlineCategory === cat.id
+                                      ? cat.color + " font-bold"
+                                      : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                                  }`}
+                                >
+                                  <span className="text-[10px] block">{cat.label}</span>
+                                  <span className="text-[7.5px] text-slate-400 line-clamp-2 mt-0.5 leading-tight">{cat.desc}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                              Associated Hazard Tags
+                            </label>
+                            <div className="flex flex-wrap gap-4 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                              {["Flammable", "Corrosive", "Reactive", "Toxic"].map((h) => {
+                                const isChecked = offlineHazardsSelected.includes(h);
+                                return (
+                                  <label key={h} className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        if (isChecked) {
+                                          setOfflineHazardsSelected(offlineHazardsSelected.filter((item) => item !== h));
+                                        } else {
+                                          setOfflineHazardsSelected([...offlineHazardsSelected, h]);
+                                        }
+                                      }}
+                                      className="rounded text-emerald-700 focus:ring-emerald-600 w-3.5 h-3.5"
+                                    />
+                                    {h}
+                                  </label>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
+                      </div>
+
+                      <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end gap-3">
                         <button
-                          onClick={() => setImage(null)}
-                          className="text-slate-400 hover:text-red-600 transition"
-                          title="Remove Photograph"
+                          type="button"
+                          onClick={() => setShowOfflineWizard(false)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleGenerateOfflineSop}
+                          className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-5 rounded-lg text-xs tracking-wider uppercase transition shadow flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <FileText className="w-4 h-4 text-emerald-200" />
+                          Compile Offline Tulane SOP
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-1 uppercase tracking-tight">
+                          <Camera className="w-4 h-4 text-emerald-700" />
+                          1. Scan Reagent Container Label
+                        </h3>
+                        <p className="text-xs text-slate-500 mb-4">
+                          Federal standards expect correct identification of safety components. Hold your reagent bottle's GHS safety shield in front of the camera or upload a direct picture.
+                        </p>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Sensing Framework Status: <strong className="text-emerald-700">ONLINE</strong></span>
-                    <span>No chemicals available on hand? Use pre-loaded models on the right →</span>
-                  </div>
+                        {/* Camera Active Viewport */}
+                        {isCameraActive ? (
+                          <div className="relative bg-black rounded-lg overflow-hidden aspect-video max-w-lg mx-auto border-2 border-dashed border-amber-400">
+                            <video 
+                              ref={videoRef} 
+                              autoPlay 
+                              playsInline 
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 flex items-end justify-center pb-4 bg-gradient-to-t from-black/50 via-transparent to-transparent gap-3">
+                              <button
+                                type="button"
+                                onClick={capturePhoto}
+                                className="bg-amber-500 hover:bg-amber-600 text-emerald-950 px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-md hover:cursor-pointer"
+                              >
+                                <Check className="w-4 h-4" />
+                                Snapping Frame
+                              </button>
+                              <button
+                                type="button"
+                                onClick={stopCamera}
+                                className="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition hover:cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            
+                            {/* Drag Upload Area */}
+                            <label className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50 hover:bg-emerald-50/20 transition group">
+                              <Upload className="w-10 h-10 text-slate-400 group-hover:text-emerald-700 transition mb-2" />
+                              <span className="text-xs font-medium text-slate-700 group-hover:text-emerald-900">
+                                Upload Label Photo
+                              </span>
+                              <span className="text-[10px] text-slate-400 mt-1">
+                                PNG, JPG, or HEIC up to 10MB
+                              </span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handleImageFileChange} 
+                                className="hidden" 
+                              />
+                            </label>
+
+                            {/* Interactive Mobile Camera Trigger */}
+                            <div 
+                              onClick={startCamera}
+                              className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50 hover:bg-emerald-50/20 transition group"
+                            >
+                              <Camera className="w-10 h-10 text-slate-400 group-hover:text-emerald-700 transition mb-2" />
+                              <span className="text-xs font-medium text-slate-700 group-hover:text-emerald-900">
+                                Use Device Camera
+                              </span>
+                              <span className="text-[10px] text-slate-400 mt-1 text-center">
+                                Ideal for physical smartphone scanning
+                              </span>
+                            </div>
+
+                          </div>
+                        )}
+
+                        {cameraError && (
+                          <p className="text-[11px] text-red-600 mt-2 italic font-medium">{cameraError}</p>
+                        )}
+
+                        {/* Image Preview Box */}
+                        {image && !isCameraActive && (
+                          <div className="mt-4 p-3 bg-slate-100 rounded-lg flex items-center justify-between gap-3 max-w-md border border-slate-200">
+                            <div className="flex items-center gap-3">
+                              <img 
+                                src={image} 
+                                alt="Chemical Label Preview" 
+                                className="w-12 h-12 rounded object-cover border border-slate-300 shadow-sm"
+                              />
+                              <div>
+                                <span className="text-xs font-semibold text-emerald-900">Chemical Label Captured</span>
+                                <span className="block text-[10px] text-slate-400">Ready for GHS & OSHA protocol extraction</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setImage(null)}
+                              className="text-slate-400 hover:text-red-600 transition hover:cursor-pointer"
+                              title="Remove Photograph"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Sensing Framework Status: <strong className="text-emerald-700">ONLINE</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOfflineChemicalName("");
+                            setOfflineCasNumber("");
+                            setShowOfflineWizard(true);
+                          }}
+                          className="text-emerald-700 hover:text-emerald-800 font-bold hover:underline cursor-pointer flex items-center gap-1.5 transition"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          Or draft offline manually
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Panel 2: Demo Presets */}
@@ -904,7 +1104,20 @@ ${sopData.regulatoryReferences}
 
               {/* ACTION: GENERATE THROUGH GEMINI API (If image uploaded and not yet scanned) */}
               {image && !sopData && (
-                <div className="mt-5 pt-4 border-t border-slate-100 flex justify-end">
+                <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOfflineChemicalName("");
+                      setOfflineCasNumber("");
+                      setShowOfflineWizard(true);
+                      window.scrollTo({ top: 150, behavior: "smooth" });
+                    }}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition flex items-center gap-1.5 shadow hover:cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-slate-600" />
+                    Draft Offline
+                  </button>
                   <button
                     type="button"
                     disabled={isGenerating}
