@@ -11,114 +11,114 @@ export interface PresetChemical {
 
 export const PRESET_CHEMICALS: PresetChemical[] = [
   {
-    name: "Tetrahydrofuran (THF)",
-    cas: "109-99-9",
-    description: "Highly flammable solvent, classic peroxide former requiring strict testing.",
+    name: "Paraformaldehyde",
+    cas: "30525-89-4",
+    description: "Highly toxic formaldehyde polymer commonly used for tissue fixation. Releases flammable and carcinogenic formaldehyde gas upon heating; potent sensitizer.",
     imageUrl: "https://images.unsplash.com/photo-1603126857599-f6e157fa2fe6?auto=format&fit=crop&q=80&w=400",
     defaultMetadata: {
-      department: "Chemistry & Biomolecular Engineering",
+      department: "Cell & Molecular Biology",
       room: "Musa Rad Lab 402",
       principalInvestigator: "Dr. Elizabeth Tulane",
       dsr: "Sarah Jenkins, EHS Rep",
-      dateCreated: "2026-06-17"
+      dateCreated: "2026-06-18"
     },
     sop: {
-      chemicalName: "Tetrahydrofuran (THF)",
-      casNumber: "109-99-9",
-      hazards: ["Flammable", "Toxic", "Reactive"],
-      additionalHazards: "Peroxide Former, Serious Eye Damage, Specific Target Organ Toxicity (Inhalation - Respiratory Irritation).",
-      purpose: "This Standard Operating Procedure (SOP) describes the safe handling of Tetrahydrofuran (THF) or other organic peroxide-forming solvents in laboratory environments.",
-      responsibilities: "The Principal Investigator (PI) or Lab Manager must ensure all operators receive chemical-specific hazard communication training. Students and researchers must test for peroxide concentration prior to taking any aliquot.",
+      chemicalName: "Paraformaldehyde (powder / solid)",
+      casNumber: "30525-89-4",
+      hazards: ["Toxic", "Flammable"],
+      additionalHazards: "Flammable Solid, Suspected Human Carcinogen, Strong Skin & Respiratory Sensitizer, Severe Eye Damage/Irritation, Releases Toxic Formaldehyde Gas on depolymerization.",
+      purpose: "This Standard Operating Procedure (SOP) describes the safe handling, depolymerization (fixation prep), and containment protocols for dry Paraformaldehyde powder within laboratory research environments.",
+      responsibilities: "The PI or Lab Manager must ensure that all researchers working with paraformaldehyde have received chemical-specific hazard communication training and are logged under the local carcinogen surveillance protocol.",
       safetyMeasures: {
-        engineeringControls: "Must be handled within a certified Chemical Fume Hood with the sash positioned at or below 18 inches. Never heat or concentrate THF solutions unless a certified glove box or local nitrogen purge exhaust ventilation is operational. Spark-free heating mantles only.",
-        ppe: "Wear standard flame-resistant Nomex lab coats, chemical safety splash goggles, and heavy-duty nitrile gloves (minimum thickness of 8 mil, preferably double-gloved). Note that standard single thin nitrile gloves provide less than 5 minutes of breakthrough time; immediately discard if contact occurs.",
-        saferAlternatives: "For chromatography or extraction, explore replacing THF with Ethyl Acetate/Heptane mixtures or Methyl Tert-Butyl Ether (MTBE) which form peroxides much more slowly."
+        engineeringControls: "Paraformaldehyde powder must ALWAYS be weighed, transferred, and dissolved inside a certified Chemical Fume Hood with the sash positioned below 18 inches. Heat or depolymerization under basic/acidic conditions can ONLY be performed within a working hood to capture gaseous formaldehyde releases. Never handle dry powder on the open bench.",
+        ppe: "Wear a fire-resistant Nomex lab coat, chemical safety splash goggles, and heavy-duty nitrile gloves (minimum 8 mil thickness or double-glove). Standard thin nitrile gloves provide weak protection against formaldehyde; immediately remove and discard gloves if contact occurs.",
+        saferAlternatives: "Use pre-made, commercially sealed 4% or 10% buffered neutral formalin vials instead of weighing out dry paraformaldehyde powder to completely eliminate the dust inhalation hazard."
       },
-      handlingProcedures: "Always handle under an inert atmosphere (Nitrogen/Argon) if distilling. Never evaporate to dryness as concentrated peroxide crystals are highly shock-sensitive explosives. Open bottles must be dated upon receipt and dated upon first opening.",
-      storageRequirements: "Store in a designated, ventilated flammables cabinet away from strong oxidizers, mineral acids, and direct sunlight. Keep containers tightly closed under nitrogen blanket where possible. Keep away from heat, sparks, open flames, and hot surfaces.",
+      handlingProcedures: "Weigh dry powder using a pre-calibrated balance placed inside the chemical fume hood (or use a closed container transport protocol: tare bottle, add powder in hood, seal, weigh outside, return to hood). Avoid any activities generating aerosolized dust. When preparing 4% solutions by heating, use a temperature-controlled hotplate and ensure a closed or vented container under secondary containment to catch any spills.",
+      storageRequirements: "Store dry solid in a tightly sealed container in a cool, dry, well-ventilated location away from strong oxidizers, strong acids, and reducing agents. Keep containers tightly closed and clearly labeled as a carcinogen.",
       spillAndFirstAid: {
-        spillProcedures: "For small spills (<100mL), extinguish all ignition sources, apply specialized solvent-absorbent pads from the spill kit, and place in a vapor-tight waste container. For larger spills, evacuate the room immediately, pull fire alarm, and contact Tulane EHS emergency response line.",
-        firstAid: "Eye contact: Flush with copious water at the emergency eyewash station for at least 15 minutes. Skin contact: Remove contaminated clothing and flush skin with drench shower. Inhalation: Move victim to fresh air. Ingestion: Seek immediate emergency medical care, do not induce vomiting.",
-        emergencyLocations: "The nearest emergency drench shower and eyewash station are located adjacent to the main lab doorway exit. Class B fire extinguisher is mounted right outside Room 402."
+        spillProcedures: "For small dry powder spills (<5g inside a fume hood), moisten the powder with water to prevent airborne dust, carefully sweep or wipe with a damp paper towel/pad, and place in a sealed bag. For larger spills or spills outside the hood, immediately evacuate the room, isolate the area to prevent inhalation of formaldehyde gas, and dial Tulane EHS emergency response.",
+        firstAid: "Inhalation: Immediately move the victim to fresh air; seek emergency medical advice. Eye contact: Flush at the eyewash station with copious water for at least 15 minutes. Skin contact: Remove contaminated clothing and flush skin with drench shower. Ingestion: Drink water to rinse mouth; do not induce vomiting, seek immediate emergency medical care.",
+        emergencyLocations: "Nearest drench shower and eyewash station are located directly adjacent to the main laboratory doorway exit. Formaldehyde-specific spill absorbent pads are stored in the lime-green spill cylinder in Room 402."
       },
-      disposalGuidelines: "Store liquid waste in certified amber glass containers equipped with vented caps. Label clearly with 'Hazardous Waste - Tetrahydrofuran'. Do not mix with chlorinated solvents. Evacuate waste cycles via Tulane EHS by emailing OEHS@tulane.edu.",
-      trainingRequirements: "All lab personnel must successfully complete Tulane's General Lab Safety & HazCom training, followed by a signed hands-on peer review of THF distillation and air-free transfer protocols.",
-      testingAndDocumentation: "THF bottles MUST be tested for active organic peroxides every 3 to 6 months using starch-iodide test strips. If peroxide concentration exceeds 20 ppm, operation must cease and the bottle must be stabilized and disposed of immediately. All test levels, dates, and operator initials must be written on the container label.",
-      regulatoryReferences: "OSHA Laboratory Standard (29 CFR 1910.1450), Tulane OEHS Hazardous Waste Management Manual, and NIOSH THF Hazard Handbook."
+      disposalGuidelines: "All paraformaldehyde waste, contaminated materials, and unused solutions must be collected in compatible high-density polyethylene waste containers labeled 'Hazardous Waste - Contains Formaldehyde/Paraformaldehyde'. Never pour raw formalin solutions down the drain. Schedule laboratory waste collection via Tulane EHS at OEHS@tulane.edu.",
+      trainingRequirements: "Personnel must complete Tulane's HazCom/General Laboratory Safety, Respirator Awareness (if applicable), and hands-on, peer-reviewed preparation of fixing solutions in a chemical fume hood.",
+      testingAndDocumentation: "Containers must be inspected monthly for cap degradation or volatile powder crystallization. Track total amounts manufactured and used in the lab carcinogen inventory spreadsheet.",
+      regulatoryReferences: "OSHA Formaldehyde Standard (29 CFR 1910.1048), Tulane University Chemical Hygiene Plan, and NIOSH Select Carcinogens Registry."
     }
   },
   {
-    name: "Nitric Acid (70%)",
-    cas: "7697-37-2",
-    description: "Strong mineral acid and powerful oxidizing agent.",
+    name: "Paclitaxel (Taxol)",
+    cas: "33069-62-4",
+    description: "Highly potent mitotic inhibitor chemotherapy agent. Severe reproductive hazard, teratogen, and potential mutagen; requires glove box or high-containment weighing.",
     imageUrl: "https://images.unsplash.com/photo-1532187863486-abf9d39d66e8?auto=format&fit=crop&q=80&w=400",
     defaultMetadata: {
-      department: "Materials Science & Engineering",
+      department: "Cancer Research & Bio-Innovation",
       room: "Boggs Hall 112",
       principalInvestigator: "Dr. James Vance",
       dsr: "Arthur Dent, Safety Rep",
-      dateCreated: "2026-06-17"
+      dateCreated: "2026-06-18"
     },
     sop: {
-      chemicalName: "Nitric Acid (65-70%)",
-      casNumber: "7697-37-2",
-      hazards: ["Corrosive", "Reactive"],
-      additionalHazards: "Strong Oxidizer, Severe Skin Burns, Eye Damage, Poisonous gas release (Nitrogen Dioxide) upon contact with organic compounds.",
-      purpose: "This Standard Operating Procedure (SOP) describes safe handling, storage, and emergency procedures for concentrated Nitric Acid in etching and synthesis processes.",
-      responsibilities: "The PI is responsible for establishing a designated acid workstation. Personnel must maintain diligent records of all acid digestions.",
+      chemicalName: "Paclitaxel (Taxol)",
+      casNumber: "33069-62-4",
+      hazards: ["Toxic"],
+      additionalHazards: "Mitotic Inhibitor (Chemotherapeutic), Severe Teratogen and Reproductive Toxin, Suspected Human Carcinogen, Potential Mutagen, Skin Sensitizer, and Eye Irritant.",
+      purpose: "This Standard Operating Procedure (SOP) defines the containment, safe manipulation, weighing, and decontamination requirements for Paclitaxel-powdered dry active pharmaceutical materials to prevent occupational exposure.",
+      responsibilities: "The PI must maintain a registered inventory of high-potency API substances (HPAPIs). All female personnel of reproductive capacity must review the explicit developmental hazard warnings prior to working with paclitaxel.",
       safetyMeasures: {
-        engineeringControls: "Always handle within a fully functional Chemical Fume Hood with acid-resistant coating. Ensure sash is kept at lowest usable height. Never close/block the fume hood deck vents.",
-        ppe: "Thick neoprene or butyl chemical-resistant gloves (do not use thin nitrile gloves as Nitric Acid degrades them instantly). Chemistry splash goggles, full face shield if handling >250mL, acid-resistant apron, and closed-toe leather shoes.",
-        saferAlternatives: "Use diluted Nitric Acid (10% or less) if etching speeds permit, or switch to safer organic acids depending on mineral digestion requirements."
+        engineeringControls: "Weighing of dry Paclitaxel powder must ONLY be executed within a certified Class II Biosafety Cabinet (BSC) with negative pressure, a dedicated HEPA-filtered glove box, or a dedicated powder containment enclosure. Do not handle dry powder inside an uncontained fume hood unless static-controlled weigh chambers are activated.",
+        ppe: "Double-gloving with high-performance nitrile gloves (first layer under cuff, second layer over cuff; minimum 7 mil thickness each). Long-sleeved impervious disposable Tyvek sleeve covers or gowns over standard Nomex lab coats. Certified N95 or HEPA-filtered half-face respirator is required if weighing uncontained powders outside a closed isolator system.",
+        saferAlternatives: "Purchase paclitaxel as pre-formulated, pre-dissolved stock solution aliquots in DMSO or ethanol rather than dry powder to bypass high-risk powder weighing and static dispersion issues."
       },
-      handlingProcedures: "Always add acid to water (never add water to acid!). Nitric acid reacts violently with organic solvents (like ethanol, acetone) and paper towels. Never wipe up nitric acid spills with paper towels — they will catch fire!",
-      storageRequirements: "Store inside a dedicated, corrosion-resistant acid cabinet on secondary containment trays. nitric acid must be stored separately from organic acids (e.g., Acetic Acid, Formic Acid) and organic solvents.",
+      handlingProcedures: "Work must be conducted only within a designated containment area marked with warning labels. Store and transport the analytical vials inside durable, secondary shatter-resistant containers. Decontaminate all weigh boxes, spatulas, and balances immediately after use with a 0.1M Sodium Hydroxide (NaOH) hydrolysis solution or specialized chemotherapeutic decontamination agents.",
+      storageRequirements: "Store inside a locked, labeled refrigerator at 2-8°C with secondary containment. The outer refrigerator door must display a clear warning: 'POTENT INDUCING CHEMOTHERAPEUTIC ACTIVE PHARMACEUTICAL AGENT - TOXIN/TERATOGEN STORAGE'. Keep away from food, drink, and animal feeding areas.",
       spillAndFirstAid: {
-        spillProcedures: "Do NOT use organic materials like sawdust or paper towels to absorb. Neutralize spill slowly with sodium bicarbonate (baking soda) or a certified acid spill neutralizer until bubbling stops, then wipe up with acid-neutralizing pads.",
-        firstAid: "Skin: Flush immediately under safety drench shower for 15 minutes, removing contaminated clothes. Eyes: Flush at eyewash station for 15 minutes. Ingestion: Drink plenty of water immediately, do not induce vomiting, seek immediate emergency medicine.",
-        emergencyLocations: "Safety shower is located within 10 seconds of Boggs Room 112. Lime-green acid safety spill kit is situated by the fume hood."
+        spillProcedures: "Small dry spills (<10mg inside containment scale-well): Clean using chemotherapeutic-specific sticky wipe pads or wet-mop with 0.1M NaOH solution. Do not dry-sweep. Large spills or spills outside containment: Evacuate the room immediately, close and lock doors, post warnings, and contact Tulane Biosafety and EHS Emergency Teams for professional cleanup.",
+        firstAid: "Eyes: Flush immediately with generous volumes of saline or water for 15 minutes. Skin: Wash thoroughly with large volumes of soap and water; do not scrub intensely as it increases skin absorption. Remove clothing immediately. Inhalation: Move victim to fresh air. Seek immediate specialized clinical toxicologist assessment.",
+        emergencyLocations: "Chemotherapeutic spill neutralizer kits and decontamination solutions are stored in the high-containment yellow box under the Boggs Hall Room 112 biosafety wash workstation."
       },
-      disposalGuidelines: "Store waste in high-density polyethylene (HDPE) containers. Never mix nitric acid waste with organic wastes (explosive risk). Label container clearly and submit disposal request to Tulane OEHS.",
-      trainingRequirements: "General Acid safety training plus classroom orientation on oxidizer reactivities.",
-      testingAndDocumentation: "N/A - Nitric acid does not form peroxides, but inspect bottles annually for cap degradation and yellowing of the liquid (indicating nitrogen oxide gas buildup).",
-      regulatoryReferences: "OSHA 29 CFR 1910.1450, Tulane University OEHS Chemical Hygiene Plan, and NIOSH Pocket Guide to Nitric Acid."
+      disposalGuidelines: "Dispose of all solids, vials, solutions, pipettes, and containment items as regulated chemotherapeutic bio-hazardous medical waste. Place inside a black hazardous waste bucket equipped with tight-fitting lids. Do not mix with standard chemical or biological wastes. Coordinate waste disposal cycles via Tulane EHS.",
+      trainingRequirements: "Mandatory Tulane Biosafety Program certification, specialized chemotherapeutic toxin handling training, and peer-verified double-bagged container disposal procedures.",
+      testingAndDocumentation: "Workplaces and BSC interiors must undergo formal wipe-testing or UV fluorescent tracer analysis every 6 months to ensure no persistent chemotherapeutic residue remains. Log all aliquots prepared inside the lab active inventory ledger.",
+      regulatoryReferences: "OSHA Hazardous Drugs Standard, NIOSH List of Antineoplastic and Other Hazardous Drugs in Healthcare Settings, and Tulane University Biological Safety Manual."
     }
   },
   {
-    name: "Gaseous Carbon Monoxide",
-    cas: "630-08-0",
-    description: "Highly toxic toxic gas, odorless, flammable, requiring continuous monitoring.",
+    name: "Perchloric Acid (70%)",
+    cas: "7601-90-3",
+    description: "Extremely strong mineral superacid and powerful oxidizer. Reacts violently with organic matter and forms highly shock-sensitive, explosive perchlorate salts.",
     imageUrl: "https://images.unsplash.com/photo-1518152006812-cdab29b069a8?auto=format&fit=crop&q=80&w=400",
     defaultMetadata: {
-      department: "Physics & Engineering Physics",
+      department: "Materials Science & Engineering",
       room: "Percival Lab 304",
       principalInvestigator: "Dr. Rachel Green",
-      dsr: "Monica Geller, safety inspector",
-      dateCreated: "2026-06-17"
+      dsr: "Monica Geller, Safety Inspector",
+      dateCreated: "2026-06-18"
     },
     sop: {
-      chemicalName: "Carbon Monoxide Gas",
-      casNumber: "630-08-0",
-      hazards: ["Flammable", "Toxic"],
-      additionalHazards: "Chemical Asphyxiant, Lethal by Inhalation, Reprotoxic, compressed cylinder hazards. Odorless and tasteless.",
-      purpose: "This Standard Operating Procedure (SOP) describes procedures for safe work with compressed Carbon Monoxide gas in chemical vapor deposition.",
-      responsibilities: "The PI must maintain a calibrated, hard-wired carbon monoxide detector in the laboratory. Students must never work alone with carbon monoxide gas cylinders.",
+      chemicalName: "Perchloric Acid (60-70%)",
+      casNumber: "7601-90-3",
+      hazards: ["Corrosive", "Reactive"],
+      additionalHazards: "Strong Oxidizer, Contact with organic materials may cause fire or explosion, Forms shock-sensitive explosive perchlorate metal/organic salts, Severe Chemical Burns and Eye Damage.",
+      purpose: "This Standard Operating Procedure (SOP) defines the safety standards, containment controls, and reactive chemical hazards associated with utilizing concentrated Perchloric Acid in mineral digestions or electro-polishing.",
+      responsibilities: "The PI is responsible for ensuring perchloric acid work is restricted ONLY to certified perchloric wash-down fume hoods. No student or researcher is permitted to use perchloric acid outside specialized washdown systems.",
       safetyMeasures: {
-        engineeringControls: "Cylinder must be stored inside a continuously exhausted gas cabinet. Exhaust line must be direct-vented to the roof. Process must operate within a sealed vacuum reactor or enclosed fume hood. Must have automated pneumatic shutoff valves connected to the gas alarm system.",
-        ppe: "Nomex flame-resistant lab coat, certified safety glasses with side shields, and standard laboratory gloves. (PPE does NOT protect against carbon monoxide inhalation; reliance is entirely on engineering controls and gas detection).",
-        saferAlternatives: "None available for carbonylation synthesis, but use premixed diluted CO (e.g., 10% CO in Nitrogen or Argon) where possible to lower hazard release severity."
+        engineeringControls: "If heating or distilling, you MUST use a dedicated Perchloric Acid Fume Hood equipped with automated water spray/wash-down manifolds, constructed entirely of non-combustible stainless steel or PVC. Never heat perchloric acid in standard organic chemical hoods, as the vapor forms explosive anhydride salts on wooden boards and in ductwork. Ensure ductwash systems are activated weekly.",
+        ppe: "Chemical-resistant heavy neoprene, fluororubber, or heavy-duty PVC gloves (avoid light nitrile gloves which degrade rapidly). Indirect-ventilation chemical splash goggles and a full-face safety shield. Splash-proof chemical apron and closed-toe leather/synthetic hazard shoes.",
+        saferAlternatives: "Evaluate replacing perchloric-nitric digestions with safer, non-explosive acid digestions such as Hydrochloric-Nitric acid (Aqua Regia) or high-pressure microwave digestion with dilute Nitric Acid."
       },
-      handlingProcedures: "Execute leak checks of all fittings using soap solution or leak detectors before opening cylinder valve. Always clear lines with an inert gas (Argon/Nitrogen) purging sequence before and after CO flow.",
-      storageRequirements: "Store cylinders in standard exhaust gas cabinets. Secure cylinders with dynamic high-double-clamp brackets to solid support structures. Keep away from oxidizing gases and ignition sources.",
+      handlingProcedures: "Never heat perchloric acid with organic compounds (e.g., grease, alcohols, paper, cloth, or organic solvents) as this results in violent, explosive reactions. Never use greased ground glass joints. Clean all apparatus thoroughly of any organic contamination before introduction. Always add perchloric acid to water, never water to acid, and handle inside Teflon or glass containment trays.",
+      storageRequirements: "Store in a dedicated, corrosion-resistant, fireproof acid cabinet in glass secondary containment trays. NEVER store perchloric acid on wooden shelves or near paper/cardboard. Keep strictly separated from dehydrating agents (such as Sulfuric Acid or Phosphorus Pentoxide) and organic chemicals (solvents, acetic acid).",
       spillAndFirstAid: {
-        spillProcedures: "In case of gas alarm triggering, immediately close cylinder valve IF safe to do so. Gather all occupants, evacuate the laboratory immediately, close the door, and pull the emergency building fire alarm to initiate sirens.",
-        firstAid: "Inhalation: Immediately move the exposed person to fresh air. If breathing has stopped, trained personnel should administer CPR or 100% supplemental oxygen. Seek emergency clinical transport immediately.",
-        emergencyLocations: "Calibrated optical CO alarm display is positioned on the wall next to the main corridor exit. The system emergency gas shut-off button is highlighted in yellow on the gas cabinet exterior panel."
+        spillProcedures: "Do NOT use organic sorbents like sawdust, paper, or standard organic chemical pads (which will ignite or form explosive crystals). Neutralize the spill slowly with sodium bicarbonate or calcium carbonate. Once neutralized, dilute with plentiful volumes of water and clean using inorganic cotton pads or inert squeegees. Place in a designated, water-flooded disposal bottle.",
+        firstAid: "Skin contact: Immediately flood the area under the safety drench shower for 15 minutes, removing all contaminated clothing. Eye contact: Flush immediately at the eyewash station for at least 15 minutes. Inhalation: Move to fresh air and check for breathing difficulties. Ingestions: Do not induce vomiting; drink water and seek immediate emergency clinical support.",
+        emergencyLocations: "The nearest dedicated stainless steel perchloric wash-down workstation and emergency drench shower are located in Percival Room 304. Inorganic spill neutralizer kits are situated by the cabinet."
       },
-      disposalGuidelines: "Return empty or unused cylinders directly to the gas distributor. Do not attempt to vent gases locally.",
-      trainingRequirements: "Mandatory compressed cylinder safety certificate, CO alarm drills, and full-scale peer walkthroughs with EHS present.",
-      testingAndDocumentation: "Weekly functional testing of local alarm sensors. Tubing leak checks recorded in the lab safety log book prior to every active gas run.",
-      regulatoryReferences: "OSHA 29 CFR 1910.1017, Compressed Gas Association (CGA) P-1, and Tulane Safety Standard for Toxic Gases."
+      disposalGuidelines: "Store waste separated from any organic chemical streams inside pure glass or Teflon containers. Dilute waste with neutral water to prevent salt crystallization. Clearly label container as 'Hazardous Waste - Hydrated Perchloric Acid Residue' and organize immediate removal with Tulane EHS at OEHS@tulane.edu.",
+      trainingRequirements: "Mandatory completion of Tulane's Reactive Chemicals & Explosive Hazard Training, combined with a physical walkthrough and hands-on run of the hood washdown manifolds with EHS Representatives.",
+      testingAndDocumentation: "Weekly logging of fume hood washdown activation. Quarterly testing of metal or duct joints using specialized methylene blue perchlorate identification reagents to detect explosive crystal deposition.",
+      regulatoryReferences: "OSHA 29 CFR 1910.1450 Reactive Chemicals Protocol, NFPA 430 Code for the Storage of Liquid and Solid Oxidizers, and Tulane EHS Guidelines on Perchloric Acid Use."
     }
   }
 ];

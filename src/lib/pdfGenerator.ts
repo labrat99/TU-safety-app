@@ -138,14 +138,15 @@ export function generateSOPPdf(
     doc.setDrawColor(15, 23, 42); // solid thin black grid
     doc.setLineWidth(0.35);
 
-    const boxHeight = 22;
+    const boxHeight = 33;
     const colWidth = contentWidth / 3;
 
     // Outer boundary box
     doc.rect(marginX, currentY, contentWidth, boxHeight, "S");
 
-    // Horizontal split line inside box
+    // Horizontal split lines inside box
     doc.line(marginX, currentY + 11, marginX + contentWidth, currentY + 11);
+    doc.line(marginX, currentY + 22, marginX + contentWidth, currentY + 22);
 
     // Vertical dividers - Row 1
     doc.line(marginX + colWidth, currentY, marginX + colWidth, currentY + 11);
@@ -153,6 +154,9 @@ export function generateSOPPdf(
 
     // Vertical divider - Row 2
     doc.line(marginX + colWidth * 2, currentY + 11, marginX + colWidth * 2, currentY + 22);
+
+    // Vertical divider - Row 3
+    doc.line(marginX + colWidth * 2, currentY + 22, marginX + colWidth * 2, currentY + 33);
 
     // Cell Texts & Values (Row 1)
     // Date
@@ -207,6 +211,40 @@ export function generateSOPPdf(
     doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
     const dsrTruncated = metadata.dsr.length > 25 ? metadata.dsr.slice(0, 25) + "..." : metadata.dsr;
     doc.text(dsrTruncated || "N/A", marginX + colWidth * 2 + 2.5, currentY + 19);
+
+    // Cell Texts & Values (Row 3 - MSDS Link and Attachment details)
+    // MSDS Web Link (takes 2 cols width)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.2);
+    doc.setTextColor(COLOR_MUTED_GRAY[0], COLOR_MUTED_GRAY[1], COLOR_MUTED_GRAY[2]);
+    doc.text("ASSOCIATED MSDS/SDS WEB LINK", marginX + 2.5, currentY + 25.5);
+    doc.setFont("helvetica", "semibold");
+    doc.setFontSize(8);
+    doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
+    
+    const msdsUrlRaw = metadata.msdsUrl || "";
+    let msdsUrlTruncated = "N/A";
+    if (msdsUrlRaw) {
+      msdsUrlTruncated = msdsUrlRaw.length > 80 ? msdsUrlRaw.slice(0, 77) + "..." : msdsUrlRaw;
+    }
+    doc.text(msdsUrlTruncated, marginX + 2.5, currentY + 30);
+
+    // Physical SDS File Attachment (takes 1 col width)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.2);
+    doc.setTextColor(COLOR_MUTED_GRAY[0], COLOR_MUTED_GRAY[1], COLOR_MUTED_GRAY[2]);
+    doc.text("PHYSICAL SDS FILE ATTACHMENT", marginX + colWidth * 2 + 2.5, currentY + 25.5);
+    doc.setFont("helvetica", "semibold");
+    doc.setFontSize(8);
+    doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
+    
+    const msdsFileNameRaw = metadata.msdsFileName || "";
+    let msdsFileNameTruncated = "No document file attached";
+    if (msdsFileNameRaw) {
+      msdsFileNameTruncated = msdsFileNameRaw.length > 28 ? msdsFileNameRaw.slice(0, 25) + "..." : msdsFileNameRaw;
+      doc.setTextColor(8, 122, 85); // elegant emerald hue for active attachment
+    }
+    doc.text(msdsFileNameTruncated, marginX + colWidth * 2 + 2.5, currentY + 30);
 
     currentY += boxHeight + 4;
 
@@ -551,7 +589,7 @@ export function generateSOPPdf(
 
   // Name and Date lines on the right
   const labelX = marginX + 70;
-  const lineW = 38;
+  const lineW = 34;
 
   // Name Printed Line
   doc.setFont("helvetica", "bold");
@@ -560,11 +598,11 @@ export function generateSOPPdf(
   doc.text("PRINT PI NAME:", labelX, currentY + 20.5);
   doc.setDrawColor(148, 163, 184);
   doc.setLineWidth(0.3);
-  doc.line(labelX + 22, currentY + 21, labelX + 22 + lineW, currentY + 21);
+  doc.line(labelX + 26, currentY + 21, labelX + 26 + lineW, currentY + 21);
   doc.setFont("helvetica", "semibold");
   doc.setFontSize(8);
   doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
-  doc.text(metadata.principalInvestigator || "", labelX + 23, currentY + 20);
+  doc.text(metadata.principalInvestigator || "", labelX + 27, currentY + 20);
 
   // Date Line
   doc.setFont("helvetica", "bold");
@@ -573,11 +611,11 @@ export function generateSOPPdf(
   doc.text("APPROVAL DATE:", labelX, currentY + 28.5);
   doc.setDrawColor(148, 163, 184);
   doc.setLineWidth(0.3);
-  doc.line(labelX + 22, currentY + 29, labelX + 22 + lineW, currentY + 29);
+  doc.line(labelX + 26, currentY + 29, labelX + 26 + lineW, currentY + 29);
   doc.setFont("helvetica", "semibold");
   doc.setFontSize(8);
   doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
-  doc.text(metadata.dateCreated || "", labelX + 23, currentY + 28);
+  doc.text(metadata.dateCreated || "", labelX + 27, currentY + 28);
 
   // Verification Seal
   const sealX = marginX + 136;

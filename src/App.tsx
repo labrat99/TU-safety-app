@@ -21,9 +21,12 @@ import {
   FileDown,
   RefreshCw,
   HelpCircle,
-  Info
+  Info,
+  QrCode
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import QRCode from "qrcode";
+import jsQR from "jsqr";
 import { TulaneSOPData, SOPMetadata, SavedSOPRecord } from "./types";
 import { PRESET_CHEMICALS, PresetChemical } from "./presets";
 import { generateSOPPdf } from "./lib/pdfGenerator";
@@ -35,11 +38,14 @@ export default function App() {
 
   // Metadata inputs for Tulane SOP
   const [metadata, setMetadata] = useState<SOPMetadata>({
-    department: "Chemistry & Biomolecular Engineering",
-    room: "Musa Rad Lab 402",
-    principalInvestigator: "Dr. Elizabeth Tulane",
-    dsr: "Sarah Jenkins, EHS Representative",
-    dateCreated: new Date().toISOString().substring(0, 10),
+    department: "",
+    room: "",
+    principalInvestigator: "",
+    dsr: "",
+    dateCreated: "",
+    msdsUrl: "",
+    msdsFileName: "",
+    msdsFileData: "",
   });
 
   // Current SOP data state
@@ -138,16 +144,84 @@ export default function App() {
   const [activeEditingSection, setActiveEditingSection] = useState<string>("general");
   const [editorSelectedEquipment, setEditorSelectedEquipment] = useState<"eyewash" | "shower" | "extinguisher">("eyewash");
 
+  // QR code / Digital Share server states
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [digitalViewUrl, setDigitalViewUrl] = useState<string | null>(null);
+  const [isGeneratingQr, setIsGeneratingQr] = useState(false);
+  const [isUrlSopLoading, setIsUrlSopLoading] = useState(false);
+
   // Local Storage safety vault
   const [savedRecords, setSavedRecords] = useState<SavedSOPRecord[]>([]);
 
   // Camera integration vars
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isQrScanningActive, setIsQrScanningActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const qrScanFrameRef = useRef<number | null>(null);
 
-  // Load saved SOP list from local storage on mount
+  // Fetch and Load SOP from digital server or local storage
+  const fetchAndLoadSop = async (sopId: string) => {
+    setIsUrlSopLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await fetch(`/api/sop/${sopId}`);
+      if (!res.ok) {
+        throw new Error("SOP record not found on safety server. Checking local backup...");
+      }
+      const data = await res.json();
+      if (data.success && data.record) {
+        setMetadata({
+          ...data.record.metadata,
+          msdsUrl: data.record.metadata.msdsUrl || "",
+          msdsFileName: data.record.metadata.msdsFileName || "",
+          msdsFileData: data.record.metadata.msdsFileData || "",
+        });
+        setSopData(data.record.sop);
+        setImage(data.record.imageThumbnail || null);
+        setActiveRecordId(data.record.id);
+        setActiveTab("scan");
+        setShowOfflineWizard(false);
+        setSuccessMessage(`Digital SOP for ${data.record.sop.chemicalName} loaded successfully!`);
+        return true;
+      }
+    } catch (err: any) {
+      console.warn("Could not load from server, attempting local storage lookup", err);
+      try {
+        const cached = localStorage.getItem("tulane-sop-records");
+        if (cached) {
+          const parsed: SavedSOPRecord[] = JSON.parse(cached);
+          const found = parsed.find(rec => rec.id === sopId);
+          if (found) {
+            setMetadata({
+              ...found.metadata,
+              msdsUrl: found.metadata.msdsUrl || "",
+              msdsFileName: found.metadata.msdsFileName || "",
+              msdsFileData: found.metadata.msdsFileData || "",
+            });
+            setSopData(found.sop);
+            setImage(found.imageThumbnail || null);
+            setActiveRecordId(found.id);
+            setActiveTab("scan");
+            setShowOfflineWizard(false);
+            setSuccessMessage(`SOP for ${found.sop.chemicalName} loaded successfully from Tulane Vault!`);
+            return true;
+          }
+        }
+      } catch (e) {
+        console.error("Failed local search", e);
+      }
+      setErrorMessage(`Failed to load target SOP: ${err.message || err}`);
+    } finally {
+      setIsUrlSopLoading(false);
+    }
+    return false;
+  };
+
+  // Load saved SOP list from local storage on mount and check for link query parameters
   useEffect(() => {
     try {
       const cached = localStorage.getItem("tulane-sop-records");
@@ -157,6 +231,20 @@ export default function App() {
     } catch (e) {
       console.error("Local storage was not accessible:", e);
     }
+
+    // Direct viewing / QR deep-link detection
+    const params = new URLSearchParams(window.location.search);
+    const sopId = params.get("sopId");
+    if (sopId) {
+      fetchAndLoadSop(sopId);
+    }
+
+    return () => {
+      if (qrScanFrameRef.current) cancelAnimationFrame(qrScanFrameRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, []);
 
   // Save records to storage helper
@@ -173,6 +261,7 @@ export default function App() {
   const startCamera = async () => {
     setCameraError(null);
     setIsCameraActive(true);
+    setIsQrScanningActive(false);
     setErrorMessage(null);
 
     try {
@@ -200,6 +289,102 @@ export default function App() {
       streamRef.current = null;
     }
     setIsCameraActive(false);
+  };
+
+  // Turn on QR Code Scanner
+  const startQrScanner = async () => {
+    setCameraError(null);
+    setIsQrScanningActive(true);
+    setIsCameraActive(false);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute("playsinline", "true");
+        videoRef.current.play().catch(e => console.error("Error playing QR video stream", e));
+        requestAnimationFrame(tickQrScanner);
+      }
+    } catch (err: any) {
+      console.error("Camera access for QR failed:", err);
+      setCameraError(
+        "Could not access mobile or webcam device for QR scanning. Please grant camera permission."
+      );
+      setIsQrScanningActive(false);
+    }
+  };
+
+  // Turn off QR Code Scanner
+  const stopQrScanner = () => {
+    if (qrScanFrameRef.current) {
+      cancelAnimationFrame(qrScanFrameRef.current);
+      qrScanFrameRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsQrScanningActive(false);
+  };
+
+  // Real-time canvas frame analysis for QR codes
+  const tickQrScanner = () => {
+    if (!videoRef.current) return;
+    
+    if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+      try {
+        const canvas = document.createElement("canvas");
+        const width = videoRef.current.videoWidth || 640;
+        const height = videoRef.current.videoHeight || 480;
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(videoRef.current, 0, 0, width, height);
+          const imageData = ctx.getImageData(0, 0, width, height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+
+          if (code && code.data) {
+            console.log("QR Code Decoded Content:", code.data);
+            let detectedSopId: string | null = null;
+            
+            try {
+              if (code.data.includes("http://") || code.data.includes("https://") || code.data.includes("?")) {
+                const url = new URL(code.data);
+                detectedSopId = url.searchParams.get("sopId");
+              } else {
+                detectedSopId = code.data.trim();
+              }
+            } catch (e) {
+              const match = code.data.match(/[?&]sopId=([^&]+)/);
+              if (match) {
+                detectedSopId = match[1];
+              } else {
+                detectedSopId = code.data.trim();
+              }
+            }
+
+            if (detectedSopId && detectedSopId.length > 5) {
+              stopQrScanner();
+              fetchAndLoadSop(detectedSopId);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Frame scanning exception:", e);
+      }
+    }
+    qrScanFrameRef.current = requestAnimationFrame(tickQrScanner);
   };
 
   // Snap photo frame from the streaming video
@@ -285,7 +470,12 @@ export default function App() {
   // Load preset sample chemicals
   const loadPreset = (preset: PresetChemical) => {
     clearScanState();
-    setMetadata(preset.defaultMetadata);
+    setMetadata({
+      ...preset.defaultMetadata,
+      msdsUrl: preset.defaultMetadata.msdsUrl || "",
+      msdsFileName: preset.defaultMetadata.msdsFileName || "",
+      msdsFileData: preset.defaultMetadata.msdsFileData || "",
+    });
     setSopData(preset.sop);
     setImage(preset.imageUrl);
     
@@ -313,8 +503,25 @@ export default function App() {
     setSuccessMessage(`Pre-loaded complete EHS safety data sheet for ${preset.name}! You can now edit and print.`);
   };
 
+  const validateMetadata = (): boolean => {
+    if (
+      !metadata.principalInvestigator.trim() ||
+      !metadata.department.trim() ||
+      !metadata.room.trim() ||
+      !metadata.dsr.trim() ||
+      !metadata.dateCreated.trim()
+    ) {
+      setErrorMessage("All Tulane Lab Administrative Context header fields (marked with *) are mandatory. Please fill them out before proceeding.");
+      return false;
+    }
+    return true;
+  };
+
   // Trigger generation of a highly-compliant local SOP draft offline
   const handleGenerateOfflineSop = () => {
+    if (!validateMetadata()) {
+      return;
+    }
     if (!offlineChemicalName.trim()) {
       setErrorMessage("Please enter a chemical name to generate an offline draft.");
       return;
@@ -347,6 +554,9 @@ export default function App() {
 
   // Trigger Gemini AI full-stack scanning endpoint
   const scanChemicalLabel = async () => {
+    if (!validateMetadata()) {
+      return;
+    }
     if (!image) {
       setErrorMessage("Please take a photo or select an image first.");
       return;
@@ -400,6 +610,9 @@ export default function App() {
   // Save current active SOP draft to Lab Safety Vault
   const saveActiveSopToLibrary = () => {
     if (!sopData) return;
+    if (!validateMetadata()) {
+      return;
+    }
 
     try {
       const newRecord: SavedSOPRecord = {
@@ -433,7 +646,12 @@ export default function App() {
 
   // Load recorded SOP from library selection
   const loadSavedRecord = (record: SavedSOPRecord) => {
-    setMetadata(record.metadata);
+    setMetadata({
+      ...record.metadata,
+      msdsUrl: record.metadata.msdsUrl || "",
+      msdsFileName: record.metadata.msdsFileName || "",
+      msdsFileData: record.metadata.msdsFileData || "",
+    });
     setSopData(record.sop);
     setImage(record.imageThumbnail || null);
     setActiveRecordId(record.id);
@@ -586,6 +804,81 @@ ${sopData.regulatoryReferences}
     navigator.clipboard.writeText(markdownText.trim());
     setSuccessMessage("Full EHS Compliant SOP Markdown copied to your computer's clipboard! Paste it into Word or Scishield.");
     setTimeout(() => setSuccessMessage(null), 5000);
+  };
+
+  // Generate standard QR code for quick tablet access on the lab bench
+  const generateSopQrAction = async () => {
+    if (!sopData) return;
+    if (!validateMetadata()) {
+      return;
+    }
+    
+    setIsGeneratingQr(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    
+    try {
+      const recordId = activeRecordId || crypto.randomUUID();
+      if (!activeRecordId) {
+        setActiveRecordId(recordId);
+      }
+      
+      const response = await fetch("/api/sop", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: recordId,
+          metadata: metadata,
+          sop: sopData,
+          scannedAt: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString(),
+          imageThumbnail: image || undefined,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Could not sync SOP with the digital lab safety server.");
+      }
+      
+      const data = await response.json();
+      if (!data.success || !data.viewUrl) {
+        throw new Error(data.error || "Missing digital view URL from the server.");
+      }
+      
+      // Draw standard QR code using the 'qrcode' library
+      const qrDataUrl = await QRCode.toDataURL(data.viewUrl, {
+        width: 350,
+        margin: 2,
+        color: {
+          dark: "#047857", // Dark emerald
+          light: "#ffffff",
+        }
+      });
+      
+      setQrCodeUrl(qrDataUrl);
+      setDigitalViewUrl(data.viewUrl);
+      setShowQrModal(true);
+      
+      const isAlreadySaved = savedRecords.some(r => r.id === recordId);
+      if (!isAlreadySaved) {
+        const newRecord: SavedSOPRecord = {
+          id: recordId,
+          metadata: { ...metadata },
+          sop: { ...sopData },
+          scannedAt: new Date().toLocaleString(),
+          imageThumbnail: image || undefined,
+        };
+        updateSavedRecords([newRecord, ...savedRecords]);
+      }
+      
+      setSuccessMessage("SOP synchronized with the digital compliance server! QR Code generated.");
+    } catch (err: any) {
+      console.error("QR Code Generation Error:", err);
+      setErrorMessage(`Failed to generate QR Code: ${err.message || err}`);
+    } finally {
+      setIsGeneratingQr(false);
+    }
   };
 
   // Filter saved records
@@ -925,8 +1218,34 @@ ${sopData.regulatoryReferences}
                           Federal standards expect correct identification of safety components. Hold your reagent bottle's GHS safety shield in front of the camera or upload a direct picture.
                         </p>
 
-                        {/* Camera Active Viewport */}
-                        {isCameraActive ? (
+                        {/* Camera Active Viewport / QR Scanner */}
+                        {isQrScanningActive ? (
+                          <div className="relative bg-black rounded-lg overflow-hidden aspect-video max-w-lg mx-auto border-2 border-emerald-500">
+                            <video 
+                              ref={videoRef} 
+                              autoPlay 
+                              playsInline 
+                              className="w-full h-full object-cover"
+                            />
+                            {/* Scanning overlay/reticle */}
+                            <div className="absolute inset-0 border-[3px] border-emerald-500/30 m-8 flex items-center justify-center animate-pulse pointer-events-none">
+                              <div className="w-48 h-48 border-2 border-dashed border-emerald-400 flex items-center justify-center rounded">
+                                <span className="text-[10px] text-emerald-300 font-mono tracking-wider uppercase bg-black/60 px-2 py-1 rounded">
+                                  Align QR Code inside...
+                                </span>
+                              </div>
+                            </div>
+                            <div className="absolute inset-x-0 bottom-4 flex justify-center">
+                              <button
+                                type="button"
+                                onClick={stopQrScanner}
+                                className="bg-red-700 hover:bg-red-800 text-white px-5 py-2 rounded-lg text-xs font-bold transition font-sans tracking-wide hover:cursor-pointer shadow-md"
+                              >
+                                Stop QR Scanner
+                              </button>
+                            </div>
+                          </div>
+                        ) : isCameraActive ? (
                           <div className="relative bg-black rounded-lg overflow-hidden aspect-video max-w-lg mx-auto border-2 border-dashed border-amber-400">
                             <video 
                               ref={videoRef} 
@@ -953,7 +1272,7 @@ ${sopData.regulatoryReferences}
                             </div>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             
                             {/* Drag Upload Area */}
                             <label className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50 hover:bg-emerald-50/20 transition group">
@@ -982,7 +1301,21 @@ ${sopData.regulatoryReferences}
                                 Use Device Camera
                               </span>
                               <span className="text-[10px] text-slate-400 mt-1 text-center">
-                                Ideal for physical smartphone scanning
+                                Capture label image to scan GHS tags
+                              </span>
+                            </div>
+
+                            {/* QR code scanner trigger */}
+                            <div 
+                              onClick={startQrScanner}
+                              className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer bg-emerald-50/10 hover:bg-emerald-50/40 transition group"
+                            >
+                              <QrCode className="w-10 h-10 text-emerald-600 group-hover:text-emerald-800 transition mb-2" />
+                              <span className="text-xs font-medium text-slate-700 group-hover:text-emerald-900">
+                                Scan QR Code
+                              </span>
+                              <span className="text-[10px] text-slate-400 mt-1 text-center">
+                                Instantly reload existing lab SOPs
                               </span>
                             </div>
 
@@ -994,7 +1327,7 @@ ${sopData.regulatoryReferences}
                         )}
 
                         {/* Image Preview Box */}
-                        {image && !isCameraActive && (
+                        {image && !isCameraActive && !isQrScanningActive && (
                           <div className="mt-4 p-3 bg-slate-100 rounded-lg flex items-center justify-between gap-3 max-w-md border border-slate-200">
                             <div className="flex items-center gap-3">
                               <img 
@@ -1045,7 +1378,7 @@ ${sopData.regulatoryReferences}
                       Quick Demo Presets
                     </h3>
                     <p className="text-xs text-slate-500 mb-4">
-                      Are you a reviewer or TA without physical chemical reagents? Tap on these preset manufacturer label datasheets to immediately fill the Tulane EHS custom document layout:
+                      Tap on these preset manufacturer label datasheets to immediately fill the Tulane EHS custom document layout:
                     </p>
 
                     <div className="space-y-2.5">
@@ -1087,17 +1420,18 @@ ${sopData.regulatoryReferences}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 no-print">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <Info className="w-4 h-4 text-emerald-700" />
-                Tulane Lab Administrative Context (Header Fields)
+                Tulane Lab Administrative Context (Header Fields) <span className="text-[10px] text-red-500 font-normal lowercase">(all fields * are mandatory)</span>
               </h3>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
                 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Principal Investigator (PI)
+                    Principal Investigator (PI) <span className="text-red-500 font-bold">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     value={metadata.principalInvestigator}
                     onChange={(e) => setMetadata({ ...metadata, principalInvestigator: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 focus:border-emerald-600 focus:bg-white rounded px-2.5 py-1.5 text-xs text-slate-800 transition outline-none"
@@ -1107,10 +1441,11 @@ ${sopData.regulatoryReferences}
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Lab Department
+                    Lab Department <span className="text-red-500 font-bold">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     value={metadata.department}
                     onChange={(e) => setMetadata({ ...metadata, department: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 focus:border-emerald-600 focus:bg-white rounded px-2.5 py-1.5 text-xs text-slate-800 transition outline-none"
@@ -1120,10 +1455,11 @@ ${sopData.regulatoryReferences}
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Lab Room Number
+                    Lab Room Number <span className="text-red-500 font-bold">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     value={metadata.room}
                     onChange={(e) => setMetadata({ ...metadata, room: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 focus:border-emerald-600 focus:bg-white rounded px-2.5 py-1.5 text-xs text-slate-800 transition outline-none"
@@ -1133,10 +1469,11 @@ ${sopData.regulatoryReferences}
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Dept Safety Rep (DSR)
+                    Dept Safety Rep (DSR) <span className="text-red-500 font-bold">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     value={metadata.dsr}
                     onChange={(e) => setMetadata({ ...metadata, dsr: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 focus:border-emerald-600 focus:bg-white rounded px-2.5 py-1.5 text-xs text-slate-800 transition outline-none"
@@ -1146,16 +1483,87 @@ ${sopData.regulatoryReferences}
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Mandatory Date
+                    Today's Date <span className="text-red-500 font-bold">*</span>
                   </label>
                   <input
                     type="date"
+                    required
                     value={metadata.dateCreated}
                     onChange={(e) => setMetadata({ ...metadata, dateCreated: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 focus:border-emerald-600 focus:bg-white rounded px-2.5 py-1.5 text-xs text-slate-800 transition outline-none"
                   />
                 </div>
 
+              </div>
+
+              {/* Associated MSDS/SDS Web Link and File Uploader */}
+              <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <span>Associated MSDS/SDS Web Link</span>
+                    <span className="text-slate-400 font-normal italic lowercase">(optional)</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={metadata.msdsUrl || ""}
+                    onChange={(e) => setMetadata({ ...metadata, msdsUrl: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-emerald-600 focus:bg-white rounded px-2.5 py-1.5 text-xs text-slate-800 transition outline-none"
+                    placeholder="e.g. https://www.sigmaaldrich.com/sds/..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <span>Attach Associated MSDS PDF / Document</span>
+                    <span className="text-slate-400 font-normal italic lowercase">(optional)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt,image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setMetadata({
+                              ...metadata,
+                              msdsFileName: file.name,
+                              msdsFileData: reader.result as string
+                            });
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      id="msds-file-uploader"
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="msds-file-uploader"
+                      className="flex-1 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 border border-slate-200 rounded px-2.5 py-1.5 text-xs text-slate-500 transition outline-none cursor-pointer flex items-center justify-between truncate"
+                    >
+                      <span className="truncate max-w-[200px]">
+                        {metadata.msdsFileName ? metadata.msdsFileName : "Choose SDS File (PDF, Word, Doc)..."}
+                      </span>
+                      <Upload className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    </label>
+                    {metadata.msdsFileName && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMetadata({
+                            ...metadata,
+                            msdsFileName: "",
+                            msdsFileData: ""
+                          });
+                        }}
+                        className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 px-2 rounded text-xs font-semibold shrink-0 transition"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* ACTION: GENERATE THROUGH GEMINI API (If image uploaded and not yet scanned) */}
@@ -1242,6 +1650,15 @@ ${sopData.regulatoryReferences}
                     >
                       <Save className="w-3.5 h-3.5" />
                       Save to Vault
+                    </button>
+                    <button
+                      onClick={generateSopQrAction}
+                      disabled={isGeneratingQr}
+                      className="bg-emerald-700 hover:bg-emerald-800 border border-emerald-600/35 text-white text-xs px-3.5 py-1.5 rounded-lg transition font-bold flex items-center gap-1.5 disabled:opacity-55"
+                      title="Generate a QR code for quick tablet access"
+                    >
+                      <QrCode className="w-3.5 h-3.5 text-emerald-300" />
+                      {isGeneratingQr ? "Syncing..." : "Generate QR Code"}
                     </button>
                     <button
                       onClick={copySopMarkdown}
@@ -1830,6 +2247,48 @@ ${sopData.regulatoryReferences}
                         </div>
                       </div>
 
+                      <div className="grid grid-cols-1 sm:grid-cols-3 printable-row">
+                        <div className="border border-black p-2.5 sm:col-span-2 printable-cell">
+                          <span className="block text-[9px] font-bold text-neutral-500 uppercase tracking-wide">Associated Chemical MSDS/SDS Web Link:</span>
+                          {metadata.msdsUrl ? (
+                            <a 
+                              href={metadata.msdsUrl} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="text-emerald-800 hover:text-emerald-950 font-semibold underline break-all inline-flex items-center gap-1 text-[11px]"
+                            >
+                              <span>{metadata.msdsUrl}</span>
+                              <span className="text-[8px] text-slate-500 no-underline font-normal italic">(opens in new tab)</span>
+                            </a>
+                          ) : (
+                            <span className="text-neutral-400 italic text-[11px]">No external SDS link attached</span>
+                          )}
+                        </div>
+                        <div className="border border-black p-2.5 printable-cell">
+                          <span className="block text-[9px] font-bold text-neutral-500 uppercase tracking-wide">Physical SDS File Attachment:</span>
+                          {metadata.msdsFileName ? (
+                            <div className="flex items-center justify-between gap-1 text-[11px]">
+                              {metadata.msdsFileData ? (
+                                <a 
+                                  href={metadata.msdsFileData} 
+                                  download={metadata.msdsFileName}
+                                  className="text-emerald-800 hover:text-emerald-950 font-semibold underline truncate block max-w-[170px]"
+                                  title="Click to download attached SDS document"
+                                >
+                                  📄 {metadata.msdsFileName}
+                                </a>
+                              ) : (
+                                <span className="text-neutral-700 font-semibold truncate block max-w-[170px]" title="Attached SDS">
+                                  📄 {metadata.msdsFileName}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-neutral-400 italic text-[11px]">No physical file attached</span>
+                          )}
+                        </div>
+                      </div>
+
                     </div>
 
                     {/* BRIEF COMPLIANCE NOTICE STATEMENT */}
@@ -2110,11 +2569,11 @@ ${sopData.regulatoryReferences}
                     {/* ======================================= */}
                     <div className="mt-8 pt-4 border-t border-black text-[10px] text-neutral-500 font-sans">
                       <p className="font-bold text-neutral-700 uppercase mb-1">Standard Regulatory Protocols Cross-Referenced:</p>
-                      <p className="leading-relaxed mb-6">{sopData.regulatoryReferences}</p>
+                      <p className="leading-relaxed mb-10">{sopData.regulatoryReferences}</p>
                       
                       {/* HIGH FIDELITY ADOBE ACROBAT PI COMPLIANCE SIGNATURE BLOCK */}
-                      <div className="bg-amber-50/45 border-1.5 border-amber-500/80 rounded-lg p-3.5 print:bg-amber-50/20 print:border-amber-600 no-print-break print:break-inside-avoid">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-3 border-b border-amber-200/50 pb-2">
+                      <div className="bg-amber-50/45 border border-amber-500/80 rounded-lg p-3.5 print:bg-amber-50/20 print:border-amber-600 no-print-break print:break-inside-avoid">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 border-b border-amber-200/50 pb-2.5">
                           <div>
                             <h5 className="font-bold text-emerald-950 text-[11px] uppercase tracking-wide">
                               Principal Investigator (PI) Compliance Certification & EHS Approval
@@ -2125,44 +2584,44 @@ ${sopData.regulatoryReferences}
                           </div>
                           
                           {/* Tulane Verified Stamp */}
-                          <div className="shrink-0 bg-emerald-50 border border-emerald-600 rounded px-2 py-1 text-center font-bold text-emerald-950 tracking-tight leading-none">
+                          <div className="shrink-0 bg-emerald-50 border border-emerald-600 rounded px-2.5 py-1 text-center font-bold text-emerald-950 tracking-tight leading-none">
                             <span className="block text-[6.5px] text-emerald-700 font-bold uppercase">Tulane EHS</span>
                             <span className="block text-[8px] mt-0.5">SOP COMPLIANT</span>
                             <span className="block text-[5.5px] font-normal text-neutral-500 mt-0.5">OSHA 29CFR1910</span>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-end">
                           {/* Left: Acrobat Digital/Physical signature field */}
-                          <div className="sm:col-span-5">
+                          <div className="sm:col-span-5 flex flex-col justify-end">
                             <span className="block text-[8.5px] font-bold text-neutral-700 mb-1">
                               PI Signature Field / Adobe Certified ID:
                             </span>
-                            <div className="border border-slate-300 bg-white min-h-[44px] rounded flex items-center justify-center p-2 relative hover:bg-slate-50 transition border-dashed hover:cursor-pointer group">
-                              <span className="text-[8.5px] text-slate-400 font-italic tracking-wider text-center select-none group-hover:text-slate-500">
+                            <div className="border border-slate-300 bg-white min-h-[54px] rounded flex flex-col justify-between p-2.5 relative hover:bg-slate-50 transition border-dashed hover:cursor-pointer group">
+                              <span className="text-[8.5px] text-slate-400 font-italic tracking-wider text-center select-none group-hover:text-slate-500 mt-1">
                                 [ CLICK TO SIGN IN ADOBE ACROBAT ]
                               </span>
                               {/* Signature placeholder line */}
-                              <div className="absolute bottom-1.5 left-2 right-2 border-b border-neutral-200 border-dotted"></div>
+                              <div className="border-b border-neutral-300 border-dashed w-full mt-2"></div>
                             </div>
                           </div>
 
                           {/* Middle: Printed Name */}
-                          <div className="sm:col-span-4">
-                            <span className="block text-[8px] font-bold text-neutral-500 uppercase tracking-widest">
+                          <div className="sm:col-span-4 pb-0.5">
+                            <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">
                               PI Printed Name
                             </span>
-                            <div className="border-b border-neutral-300 py-1.5 text-[11px] font-semibold text-neutral-800">
+                            <div className="border-b border-neutral-350 py-2 text-[11px] font-semibold text-neutral-800 min-h-[38px] flex items-end">
                               {metadata.principalInvestigator || "_________________________________"}
                             </div>
                           </div>
 
                           {/* Right: Date field */}
-                          <div className="sm:col-span-3">
-                            <span className="block text-[8px] font-bold text-neutral-500 uppercase tracking-widest">
+                          <div className="sm:col-span-3 pb-0.5">
+                            <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">
                               Approval Date
                             </span>
-                            <div className="border-b border-neutral-300 py-1.5 text-[11px] font-semibold text-neutral-800">
+                            <div className="border-b border-neutral-355 py-2 text-[11px] font-semibold text-neutral-800 min-h-[38px] flex items-end">
                               {metadata.dateCreated || "__________________"}
                             </div>
                           </div>
@@ -2407,8 +2866,94 @@ ${sopData.regulatoryReferences}
       {/* FOOTER BAR (Hidden on print) */}
       <footer className="bg-slate-950 text-slate-400 text-[11px] text-center py-4 border-t border-slate-900 mt-8 no-print font-mono">
         <p>© 2026 Tulane University Chemical Safety SOP Workstation • EHS Compliant System Hub</p>
-        <p className="mt-1">For student/TA laboratory reviews. Powered by Gemini-3.5-Flash Multimodal Search</p>
+        <p className="mt-1">Powered by Gemini-3.5-Flash Multimodal Search</p>
       </footer>
+
+      {/* QR Code Modal Dialog */}
+      <AnimatePresence>
+        {showQrModal && qrCodeUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 z-50 no-print"
+            onClick={() => setShowQrModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 text-center border-t-8 border-emerald-700"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto bg-emerald-50 text-emerald-800 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-4">
+                <QrCode className="w-8 h-8" />
+              </div>
+              
+              <h3 className="text-base font-bold text-slate-800">SOP Digital Access QR Code</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Scan this QR code with a tablet or mobile device in the lab to view and edit this digital Standard Operating Procedure (SOP) live on the bench.
+              </p>
+
+              {/* QR Code image visual */}
+              <div className="bg-slate-100 rounded-xl p-4 my-5 flex items-center justify-center border border-slate-200">
+                <div className="bg-white p-3.5 rounded-lg shadow-inner">
+                  <img 
+                    src={qrCodeUrl} 
+                    alt="SOP QR Code" 
+                    className="w-56 h-56 object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-2.5 text-left text-[10px] text-emerald-800 space-y-1">
+                <p className="text-center font-bold font-mono tracking-tight text-[11px] select-all break-all text-emerald-900">
+                  {digitalViewUrl}
+                </p>
+                <p className="text-center text-[9px] text-emerald-600 mt-1">
+                  Registered on Tulane safety servers. Survives browser cache clears.
+                </p>
+              </div>
+
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (digitalViewUrl) {
+                      navigator.clipboard.writeText(digitalViewUrl);
+                      setSuccessMessage("Digital SOP link copied to clipboard!");
+                    }
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold py-2 rounded-lg transition"
+                >
+                  Copy Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(false)}
+                  className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 rounded-lg transition shadow-sm"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Link Deep load overlay Loader */}
+      <AnimatePresence>
+        {isUrlSopLoading && (
+          <div className="fixed inset-0 bg-emerald-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 z-50 text-white">
+            <RefreshCw className="w-12 h-12 text-amber-500 animate-spin mb-4" />
+            <h3 className="text-md font-bold uppercase tracking-wider">Accessing Digital SOP...</h3>
+            <p className="text-xs text-emerald-200 mt-1 max-w-sm text-center">
+              Retrieving the requested chemical safety draft from the Tulane Laboratory safety server. One moment...
+            </p>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

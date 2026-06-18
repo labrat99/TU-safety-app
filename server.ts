@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -14,23 +15,37 @@ app.use(express.json({ limit: "10mb" }));
 
 // Initialize Google GenAI client
 const apiKey = process.env.GEMINI_API_KEY;
-const ai = apiKey
-  ? new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
+const vertexProject = process.env.VERTEX_PROJECT_ID;
+const vertexLocation = process.env.VERTEX_LOCATION || "us-central1";
+
+let ai: GoogleGenAI | null = null;
+
+if (vertexProject) {
+  console.log(`[Google GenAI] Initializing in Vertex AI mode. Project: ${vertexProject}, Location: ${vertexLocation}`);
+  ai = new GoogleGenAI({
+    project: vertexProject,
+    location: vertexLocation,
+  });
+} else if (apiKey) {
+  console.log("[Google GenAI] Initializing in Gemini Developer API (AI Studio) mode.");
+  ai = new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
       },
-    })
-  : null;
+    },
+  });
+} else {
+  console.warn("[Google GenAI] Warning: No Vertex AI or Gemini Developer API credentials found.");
+}
 
 // API Endpoints
 app.post("/api/generate-sop", async (req, res): Promise<any> => {
   try {
     if (!ai) {
       return res.status(500).json({
-        error: "GEMINI_API_KEY environment variable is not configured. Please add this in the Secrets panel.",
+        error: "Google GenAI client is not initialized. Please configure either the VERTEX_PROJECT_ID or GEMINI_API_KEY in secrets/environment variables.",
       });
     }
 
@@ -101,14 +116,14 @@ Verify all details thoroughly. Return the output as a fully filled, professional
     const textPart = { text: promptText };
 
     // Resilient model try loop with exponential retry to prevent 503 (temporary high demand) or 429 (quota exhausted) errors
-    const modelsToTry = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
+    const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-flash-latest"];
     let response: any = null;
     let lastError: any = null;
 
     for (const modelName of modelsToTry) {
-      for (let attempt = 1; attempt <= 2; attempt++) {
+      for (let attempt = 1; attempt <= 4; attempt++) {
         try {
-          console.log(`[Gemini Resilient Pipeline] Selected: ${modelName} (Attempt ${attempt}/2)`);
+          console.log(`[Gemini Resilient Pipeline] Selected: ${modelName} (Attempt ${attempt}/4)`);
           response = await ai.models.generateContent({
             model: modelName,
             contents: { parts: [imagePart, textPart] },
@@ -180,15 +195,15 @@ Verify all details thoroughly. Return the output as a fully filled, professional
           const msg = err.message || (err.error && err.error.message) || "";
           const errCode = err.code || (err.error && err.error.code) || 0;
           
-          console.warn(`[Gemini Resilient Pipeline] Attempt ${attempt} failed for ${modelName}. Code: ${errCode}, Status: ${status}, Message: ${msg}`);
+          console.warn(`[Gemini Resilient Pipeline] Attempt ${attempt}/4 failed for ${modelName}. Code: ${errCode}, Status: ${status}, Message: ${msg}`);
 
           // Recognize transient errors
           const errStr = `${status} ${msg} ${errCode}`.toLowerCase();
           const isTransient = errStr.includes("503") || errStr.includes("429") || errStr.includes("limit") || errStr.includes("exhausted") || errStr.includes("temporary") || errStr.includes("busy") || errStr.includes("unavailable") || errStr.includes("demand");
 
-          if (isTransient && attempt < 2) {
-            const delay = attempt * 1200;
-            console.log(`[Gemini Resilient Pipeline] Transient issue. Waiting ${delay}ms before retry...`);
+          if (isTransient && attempt < 4) {
+            const delay = Math.pow(2, attempt) * 1200 + Math.random() * 800;
+            console.log(`[Gemini Resilient Pipeline] Transient issue. Waiting ${Math.round(delay)}ms (Attempt ${attempt}/4) before retry...`);
             await new Promise((resolve) => setTimeout(resolve, delay));
           } else {
             // Give up on this model, continue to the next model in our list
@@ -212,6 +227,70 @@ Verify all details thoroughly. Return the output as a fully filled, professional
   } catch (error: any) {
     console.error("SOP Generation Error:", error);
     res.status(500).json({ error: error.message || "Failed to analyze chemical label and generate safety SOP." });
+  }
+});
+
+const SOPS_FILE = path.join(process.cwd(), "sops.json");
+
+// Helper to read SOPs
+function readSopsFile(): Record<string, any> {
+  try {
+    if (fs.existsSync(SOPS_FILE)) {
+      const data = fs.readFileSync(SOPS_FILE, "utf-8");
+      return JSON.parse(data || "{}");
+    }
+  } catch (err) {
+    console.error("Error reading sops.json file:", err);
+  }
+  return {};
+}
+
+// Helper to write SOPs
+function writeSopsFile(id: string, sopRecord: any) {
+  try {
+    const sops = readSopsFile();
+    sops[id] = sopRecord;
+    fs.writeFileSync(SOPS_FILE, JSON.stringify(sops, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error writing to sops.json:", err);
+  }
+}
+
+// POST /api/sop -> save SOP draft and return direct view URL for QR scanning
+app.post("/api/sop", (req, res): any => {
+  try {
+    const { id, metadata, sop, scannedAt, imageThumbnail } = req.body;
+    if (!id || !sop) {
+      return res.status(400).json({ error: "Missing required SOP fields." });
+    }
+
+    const record = { id, metadata, sop, scannedAt, imageThumbnail };
+    writeSopsFile(id, record);
+
+    const protocol = req.headers["x-forwarded-proto"] || "http";
+    const host = req.get("host");
+    const viewUrl = `${protocol}://${host}/?sopId=${id}`;
+
+    res.json({ success: true, id, viewUrl });
+  } catch (err: any) {
+    console.error("Failed to save SOP share record:", err);
+    res.status(500).json({ error: err.message || "Failed to save share record." });
+  }
+});
+
+// GET /api/sop/:id -> load saved SOP draft details
+app.get("/api/sop/:id", (req, res): any => {
+  try {
+    const id = req.params.id;
+    const sops = readSopsFile();
+    const record = sops[id];
+    if (!record) {
+      return res.status(404).json({ error: "Standard Operating Procedure record not found." });
+    }
+    res.json({ success: true, record });
+  } catch (err: any) {
+    console.error("Failed to read SOP record:", err);
+    res.status(500).json({ error: err.message || "Failed to retrieve SOP record." });
   }
 });
 
