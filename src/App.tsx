@@ -204,6 +204,12 @@ export default function App() {
     ctx.beginPath();
     ctx.moveTo(x, y);
     setIsSignatureDrawing(true);
+
+    // Auto-capture approval date if not set yet on drawing start
+    if (!metadata.dateCreated) {
+      const today = new Date().toISOString().split("T")[0];
+      setMetadata(prev => ({ ...prev, dateCreated: today }));
+    }
   };
 
   const drawSignature = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -720,6 +726,11 @@ export default function App() {
         data = JSON.parse(responseText);
       } catch (jsonErr) {
         console.error("HTML/Non-JSON response received:", responseText);
+        if (responseText.includes("Please wait while your application starts") || responseText.includes("<doctype") || responseText.includes("<html")) {
+          throw new Error(
+            "The safety server is warming up or rebuilding following a code update. Please wait about 3-5 seconds and click 'Generate SOP' again, or use our offline safe generator below."
+          );
+        }
         throw new Error(
           `The safety server returned an unexpected response (Status ${response.status}). This can occur if the laboratory safety API is experiencing heavy load. Please try again, or use our offline safe generator below.`
         );
@@ -987,6 +998,9 @@ ${sopData.regulatoryReferences}
       try {
         data = JSON.parse(responseText);
       } catch (e) {
+        if (responseText.includes("Please wait while your application starts") || responseText.includes("<doctype") || responseText.includes("<html")) {
+          throw new Error("The safety server is warming up or rebuilding following a code update. Please wait about 3-5 seconds and try again.");
+        }
         throw new Error("Received an unexpected HTML page or non-JSON response from the server. Please try again.");
       }
       if (!data.success || !data.viewUrl) {
@@ -2838,7 +2852,7 @@ ${sopData.regulatoryReferences}
 
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-end">
                           {/* Left: HTML5 Interactive Touch-screen/Tablet Signature Pad */}
-                          <div className="sm:col-span-5 flex flex-col justify-end">
+                          <div className="sm:col-span-6 flex flex-col justify-end">
                             <div className="flex justify-between items-center mb-1">
                               <span className="block text-[8.5px] font-bold text-neutral-700 uppercase tracking-wide">
                                 PI Direct Digital Signature (Tablet/Stylus):
@@ -2851,29 +2865,48 @@ ${sopData.regulatoryReferences}
                                 Clear
                               </button>
                             </div>
-                            <div className="relative border border-slate-300 bg-white rounded overflow-hidden aspect-[4/1.2] shadow-inner flex items-center justify-center">
-                              <canvas
-                                ref={signatureCanvasRef}
-                                onMouseDown={startSignatureDrawing}
-                                onMouseMove={drawSignature}
-                                onMouseUp={stopSignatureDrawing}
-                                onMouseLeave={stopSignatureDrawing}
-                                onTouchStart={startSignatureDrawing}
-                                onTouchMove={drawSignature}
-                                onTouchEnd={stopSignatureDrawing}
-                                width={450}
-                                height={120}
-                                className="w-full h-full block bg-white hover:cursor-crosshair"
-                                style={{ touchAction: "none" }}
-                              />
-                              <div className="absolute pointer-events-none text-[8px] text-slate-300 font-mono tracking-wider transition uppercase right-2 bottom-1.5 print:hidden select-none">
-                                ✍️ Sign here directly
+                            <div className="flex gap-3 items-stretch">
+                              {/* Canvas Signature Pad */}
+                              <div className="flex-1 relative border border-slate-300 bg-white rounded overflow-hidden aspect-[4/1.2] shadow-inner flex items-center justify-center">
+                                <canvas
+                                  ref={signatureCanvasRef}
+                                  onMouseDown={startSignatureDrawing}
+                                  onMouseMove={drawSignature}
+                                  onMouseUp={stopSignatureDrawing}
+                                  onMouseLeave={stopSignatureDrawing}
+                                  onTouchStart={startSignatureDrawing}
+                                  onTouchMove={drawSignature}
+                                  onTouchEnd={stopSignatureDrawing}
+                                  width={450}
+                                  height={120}
+                                  className="w-full h-full block bg-white hover:cursor-crosshair"
+                                  style={{ touchAction: "none" }}
+                                />
+                                <div className="absolute pointer-events-none text-[8px] text-slate-300 font-mono tracking-wider transition uppercase right-2 bottom-1.5 print:hidden select-none">
+                                  ✍️ Sign here directly
+                                </div>
+                              </div>
+                              
+                              {/* Interactive Date Picker next to signature pad */}
+                              <div className="w-[125px] shrink-0 flex flex-col justify-end no-print">
+                                <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-wide mb-1">
+                                  Signature Date:
+                                </span>
+                                <div className="relative border border-slate-300 bg-white rounded p-1 shadow-inner h-[52px] flex items-center justify-center">
+                                  <input
+                                    type="date"
+                                    value={metadata.dateCreated || ""}
+                                    onChange={(e) => setMetadata(prev => ({ ...prev, dateCreated: e.target.value }))}
+                                    title="Choose or edit approval date"
+                                    className="w-full h-full bg-transparent border-0 text-[10px] font-bold font-mono text-neutral-800 focus:ring-0 outline-none p-1 cursor-pointer text-center"
+                                  />
+                                </div>
                               </div>
                             </div>
                           </div>
 
                           {/* Middle: Printed Name */}
-                          <div className="sm:col-span-4 pb-0.5">
+                          <div className="sm:col-span-3 pb-0.5">
                             <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">
                               PI Printed Name
                             </span>
@@ -2882,7 +2915,7 @@ ${sopData.regulatoryReferences}
                             </div>
                           </div>
 
-                          {/* Right: Date field */}
+                          {/* Right: Date field (Print and final status display) */}
                           <div className="sm:col-span-3 pb-0.5">
                             <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">
                               Approval Date
