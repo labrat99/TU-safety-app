@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, ChangeEvent, MouseEvent } from "react";
+import React, { useState, useEffect, useRef, ChangeEvent, MouseEvent } from "react";
 import { 
   Sparkles, 
   Camera, 
@@ -161,6 +161,89 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const qrScanFrameRef = useRef<number | null>(null);
+
+  // Tablet Signature Pad states and refs
+  const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isSignatureDrawing, setIsSignatureDrawing] = useState(false);
+
+  const startSignatureDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Set brush aesthetics
+    ctx.strokeStyle = "#0c2340"; // Deep Tulane navy ink
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    const rect = canvas.getBoundingClientRect();
+    let clientX = 0;
+    let clientY = 0;
+    
+    if ("touches" in e) {
+      if (e.touches.length === 0) return;
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsSignatureDrawing(true);
+  };
+
+  const drawSignature = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isSignatureDrawing) return;
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    let clientX = 0;
+    let clientY = 0;
+    
+    if ("touches" in e) {
+      if (e.touches.length === 0) return;
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopSignatureDrawing = () => {
+    setIsSignatureDrawing(false);
+  };
+
+  const clearSignatureCanvas = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
 
   // Fetch and Load SOP from digital server or local storage
   const fetchAndLoadSop = async (sopId: string) => {
@@ -2592,17 +2675,38 @@ ${sopData.regulatoryReferences}
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-end">
-                          {/* Left: Acrobat Digital/Physical signature field */}
+                          {/* Left: HTML5 Interactive Touch-screen/Tablet Signature Pad */}
                           <div className="sm:col-span-5 flex flex-col justify-end">
-                            <span className="block text-[8.5px] font-bold text-neutral-700 mb-1">
-                              PI Signature Field / Adobe Certified ID:
-                            </span>
-                            <div className="border border-slate-300 bg-white min-h-[54px] rounded flex flex-col justify-between p-2.5 relative hover:bg-slate-50 transition border-dashed hover:cursor-pointer group">
-                              <span className="text-[8.5px] text-slate-400 font-italic tracking-wider text-center select-none group-hover:text-slate-500 mt-1">
-                                [ CLICK TO SIGN IN ADOBE ACROBAT ]
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="block text-[8.5px] font-bold text-neutral-700 uppercase tracking-wide">
+                                PI Direct Digital Signature (Tablet/Stylus):
                               </span>
-                              {/* Signature placeholder line */}
-                              <div className="border-b border-neutral-300 border-dashed w-full mt-2"></div>
+                              <button
+                                type="button"
+                                onClick={clearSignatureCanvas}
+                                className="text-[8px] text-red-650 hover:text-red-800 font-bold uppercase tracking-wider bg-red-50 hover:bg-red-105/70 px-2 py-0.5 rounded transition cursor-pointer no-print border border-red-200"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                            <div className="relative border border-slate-300 bg-white rounded overflow-hidden aspect-[4/1.2] shadow-inner flex items-center justify-center">
+                              <canvas
+                                ref={signatureCanvasRef}
+                                onMouseDown={startSignatureDrawing}
+                                onMouseMove={drawSignature}
+                                onMouseUp={stopSignatureDrawing}
+                                onMouseLeave={stopSignatureDrawing}
+                                onTouchStart={startSignatureDrawing}
+                                onTouchMove={drawSignature}
+                                onTouchEnd={stopSignatureDrawing}
+                                width={450}
+                                height={120}
+                                className="w-full h-full block bg-white hover:cursor-crosshair"
+                                style={{ touchAction: "none" }}
+                              />
+                              <div className="absolute pointer-events-none text-[8px] text-slate-300 font-mono tracking-wider transition uppercase right-2 bottom-1.5 print:hidden select-none">
+                                ✍️ Sign here directly
+                              </div>
                             </div>
                           </div>
 
