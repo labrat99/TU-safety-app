@@ -22,7 +22,12 @@ import {
   RefreshCw,
   HelpCircle,
   Info,
-  QrCode
+  QrCode,
+  Flame,
+  Skull,
+  Droplet,
+  Zap,
+  ShieldAlert
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import QRCode from "qrcode";
@@ -494,6 +499,42 @@ export default function App() {
     }
   };
 
+  // Helper to compress uploaded images for faster performance and avoiding payload size issues
+  const compressImage = (base64Str: string, maxDimension: number = 1024, quality: number = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } else {
+          resolve(base64Str);
+        }
+      };
+      img.onerror = () => {
+        resolve(base64Str);
+      };
+    });
+  };
+
   // Handle local image file upload selection
   const handleImageFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     setErrorMessage(null);
@@ -514,9 +555,17 @@ export default function App() {
         setUploadProgress(percent);
       }
     };
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       if (event.target?.result) {
-        setImage(event.target.result as string);
+        const resultStr = event.target.result as string;
+        setUploadProgress(75);
+        try {
+          const compressed = await compressImage(resultStr, 1280, 0.85);
+          setImage(compressed);
+        } catch (err) {
+          console.error("Compression failed, using fallback raw image", err);
+          setImage(resultStr);
+        }
         
         // Auto-extract file name for the offline generator prefix option
         try {
@@ -665,7 +714,16 @@ export default function App() {
         }),
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch (jsonErr) {
+        console.error("HTML/Non-JSON response received:", responseText);
+        throw new Error(
+          `The safety server returned an unexpected response (Status ${response.status}). This can occur if the laboratory safety API is experiencing heavy load. Please try again, or use our offline safe generator below.`
+        );
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || "Internal response was not successful.");
@@ -924,7 +982,13 @@ ${sopData.regulatoryReferences}
         throw new Error("Could not sync SOP with the digital lab safety server.");
       }
       
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error("Received an unexpected HTML page or non-JSON response from the server. Please try again.");
+      }
       if (!data.success || !data.viewUrl) {
         throw new Error(data.error || "Missing digital view URL from the server.");
       }
@@ -2425,18 +2489,116 @@ ${sopData.regulatoryReferences}
                       <h4 className="font-bold border-b border-neutral-300 pb-1 mb-1.5 uppercase font-sans tracking-wide text-neutral-800">
                         4. Hazards
                       </h4>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         
-                        {/* Dynamic tags parsed */}
-                        <div className="flex gap-1.5">
-                          {sopData.hazards.map((tag) => (
-                            <span 
-                              key={tag} 
-                              className="bg-red-50 text-red-950 text-[10px] font-bold border border-red-200 rounded py-0.5 px-2 uppercase tracking-wider"
-                            >
-                              • {tag}
-                            </span>
-                          ))}
+                        {/* Tulane OEHS GHS Diamond Pictograms Block */}
+                        <div className="flex flex-wrap items-start gap-4 mb-1 p-2 bg-neutral-50/70 border border-neutral-200 rounded-lg no-print">
+                          <div className="text-[9px] font-bold text-neutral-600 uppercase tracking-wider max-w-[90px] leading-snug">
+                            GHS Hazard Pictograms (Tulane OEHS):
+                          </div>
+                          <div className="flex gap-5 pl-3 border-l border-neutral-200 h-10 items-center">
+                            {sopData.hazards.length === 0 ? (
+                              <span className="text-[10px] text-neutral-400 font-mono tracking-wider">No GHS hazards declared</span>
+                            ) : (
+                              sopData.hazards.map((tag) => {
+                                const normal = tag.toLowerCase().trim();
+                                let icon = null;
+                                let code = "";
+
+                                if (normal.includes("flam")) {
+                                  icon = <Flame className="w-4 h-4 text-neutral-900" />;
+                                  code = "GHS02";
+                                } else if (normal.includes("toxic") || normal.includes("poison") || normal.includes("lethal") || normal.includes("skull")) {
+                                  icon = <Skull className="w-4 h-4 text-neutral-900" />;
+                                  code = "GHS06";
+                                } else if (normal.includes("corros") || normal.includes("acid") || normal.includes("base") || normal.includes("caustic")) {
+                                  icon = <Droplet className="w-4 h-4 text-neutral-900" />;
+                                  code = "GHS05";
+                                } else if (normal.includes("react") || normal.includes("explos") || normal.includes("oxid") || normal.includes("unstable")) {
+                                  icon = <Zap className="w-4 h-4 text-neutral-900" />;
+                                  code = "GHS01";
+                                } else {
+                                  icon = <ShieldAlert className="w-4 h-4 text-neutral-900" />;
+                                  code = "GHS07";
+                                }
+
+                                return (
+                                  <div key={tag} className="flex flex-col items-center gap-1 shrink-0 select-none">
+                                    <div className="w-6 h-6 border-2 border-red-650 bg-white rotate-45 flex items-center justify-center shadow-2xs text-neutral-900">
+                                      <div className="-rotate-45 flex items-center justify-center">
+                                        {icon}
+                                      </div>
+                                    </div>
+                                    <div className="text-[6.5px] font-mono text-neutral-500 font-bold uppercase tracking-tighter leading-none mt-1">
+                                      {code}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Print-only version of GHS Diamond Pictograms (to ensure absolute crisp layout on paper print) */}
+                        {sopData.hazards.length > 0 && (
+                          <div className="hidden print:flex items-center gap-5 my-2">
+                            {sopData.hazards.map((tag) => {
+                              const normal = tag.toLowerCase().trim();
+                              let icon = null;
+                              let code = "";
+
+                              if (normal.includes("flam")) {
+                                icon = <Flame className="w-4 h-4 text-neutral-900" />;
+                                code = "GHS02";
+                              } else if (normal.includes("toxic") || normal.includes("poison") || normal.includes("lethal") || normal.includes("skull")) {
+                                icon = <Skull className="w-4 h-4 text-neutral-900" />;
+                                code = "GHS06";
+                              } else if (normal.includes("corros") || normal.includes("acid") || normal.includes("base") || normal.includes("caustic")) {
+                                icon = <Droplet className="w-4 h-4 text-neutral-900" />;
+                                code = "GHS05";
+                              } else if (normal.includes("react") || normal.includes("explos") || normal.includes("oxid") || normal.includes("unstable")) {
+                                icon = <Zap className="w-4 h-4 text-neutral-900" />;
+                                code = "GHS01";
+                              } else {
+                                icon = <ShieldAlert className="w-4 h-4 text-neutral-900" />;
+                                code = "GHS07";
+                              }
+
+                              return (
+                                <div key={tag} className="flex items-center gap-2 border border-neutral-350 py-1 px-1.5 rounded bg-neutral-50/50">
+                                  <div className="w-5 h-5 border border-red-650 bg-white rotate-45 flex items-center justify-center shadow-2xs scale-90">
+                                    <div className="-rotate-45 flex items-center justify-center">
+                                      {icon}
+                                    </div>
+                                  </div>
+                                  <span className="text-[8px] font-bold text-neutral-800 font-mono tracking-wide">{code} ({tag})</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        
+                        {/* Dynamic tags parsed with inline icons */}
+                        <div className="flex flex-wrap gap-1.5 font-sans">
+                          {sopData.hazards.map((tag) => {
+                            const normal = tag.toLowerCase().trim();
+                            let miniIcon = null;
+                            if (normal.includes("flam")) miniIcon = <Flame className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                            else if (normal.includes("toxic")) miniIcon = <Skull className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                            else if (normal.includes("corros")) miniIcon = <Droplet className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                            else if (normal.includes("react")) miniIcon = <Zap className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                            else miniIcon = <ShieldAlert className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+
+                            return (
+                              <span 
+                                key={tag} 
+                                className="bg-red-50 text-red-950 text-[10px] font-bold border border-red-200 rounded py-0.5 px-2.5 uppercase tracking-wider flex items-center shadow-2xs"
+                              >
+                                {miniIcon}
+                                {tag}
+                              </span>
+                            );
+                          })}
                         </div>
 
                         {sopData.additionalHazards && (
