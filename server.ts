@@ -100,15 +100,22 @@ Verify all details thoroughly. Return the output as a fully filled, professional
 
     const textPart = { text: promptText };
 
-    // Call the Gemini model with Google Search grounding to ensure highly accurate SDS information
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: { parts: [imagePart, textPart] },
-      config: {
-        systemInstruction: "You are an expert Laboratory Safety Compliance Officer at Tulane University. You always supply deep, realistic, high-fidelity scientific data, safety precautions, and precise CAS numbers by querying Search resources.",
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
+    // Resilient model try loop with exponential retry to prevent 503 (temporary high demand) or 429 (quota exhausted) errors
+    const modelsToTry = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
+    let response: any = null;
+    let lastError: any = null;
+
+    for (const modelName of modelsToTry) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          console.log(`[Gemini Resilient Pipeline] Selected: ${modelName} (Attempt ${attempt}/2)`);
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: { parts: [imagePart, textPart] },
+            config: {
+              systemInstruction: "You are an expert Laboratory Safety Compliance Officer at Tulane University. You always supply deep, realistic, high-fidelity scientific data, safety precautions, and precise CAS numbers matching the scanned chemical.",
+              responseMimeType: "application/json",
+              responseSchema: {
           type: Type.OBJECT,
           properties: {
             chemicalName: { type: Type.STRING, description: "Full official chemical name" },
@@ -164,7 +171,39 @@ Verify all details thoroughly. Return the output as a fully filled, professional
           ]
         }
       }
-    });
+          });
+          console.log(`[Gemini Resilient Pipeline] Generative call completed successfully using ${modelName}!`);
+          break; // successfully generated, break out of attempt loop
+        } catch (err: any) {
+          lastError = err;
+          const status = err.status || (err.error && err.error.status) || "";
+          const msg = err.message || (err.error && err.error.message) || "";
+          const errCode = err.code || (err.error && err.error.code) || 0;
+          
+          console.warn(`[Gemini Resilient Pipeline] Attempt ${attempt} failed for ${modelName}. Code: ${errCode}, Status: ${status}, Message: ${msg}`);
+
+          // Recognize transient errors
+          const errStr = `${status} ${msg} ${errCode}`.toLowerCase();
+          const isTransient = errStr.includes("503") || errStr.includes("429") || errStr.includes("limit") || errStr.includes("exhausted") || errStr.includes("temporary") || errStr.includes("busy") || errStr.includes("unavailable") || errStr.includes("demand");
+
+          if (isTransient && attempt < 2) {
+            const delay = attempt * 1200;
+            console.log(`[Gemini Resilient Pipeline] Transient issue. Waiting ${delay}ms before retry...`);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          } else {
+            // Give up on this model, continue to the next model in our list
+            break;
+          }
+        }
+      }
+      if (response) {
+        break; // If a model succeeded, terminate the outer model iteration
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error("Failed to contact chemical safety services. Please try again or use the offline generator mode.");
+    }
 
     const jsonText = response.text || "{}";
     const sopData = JSON.parse(jsonText);

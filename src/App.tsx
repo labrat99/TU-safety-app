@@ -216,6 +216,7 @@ export default function App() {
         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
         setImage(dataUrl);
+        setOfflineChemicalName("Camera Scanned Chemical");
         stopCamera();
         setSuccessMessage("Photo captured successfully! Ready to scan.");
       }
@@ -248,6 +249,18 @@ export default function App() {
     reader.onload = (event) => {
       if (event.target?.result) {
         setImage(event.target.result as string);
+        
+        // Auto-extract file name for the offline generator prefix option
+        try {
+          const rawName = file.name.split(".")[0];
+          const cleanedName = rawName
+            .replace(/[_-]/g, " ")
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+          setOfflineChemicalName(cleanedName);
+        } catch (e) {
+          setOfflineChemicalName("Uploaded Reagent Chemical");
+        }
+
         setUploadProgress(100);
         setSuccessMessage("Label image uploaded successfully! Ready to scan.");
       }
@@ -677,9 +690,52 @@ ${sopData.regulatoryReferences}
               className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs flex items-start gap-2.5 no-print"
             >
               <AlertTriangle className="w-4.5 h-4.5 text-red-600 shrink-0 mt-0.5" />
-              <div>
+              <div className="flex-1">
                 <h5 className="font-bold">EHS Compliance Error</h5>
                 <p>{errorMessage}</p>
+                {errorMessage && (
+                  <div className="mt-3 flex flex-wrap gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOfflineWizard(true);
+                        window.scrollTo({ top: 150, behavior: "smooth" });
+                      }}
+                      className="bg-red-800 hover:bg-red-900 text-white font-bold px-3 py-1.5 rounded text-[10px] uppercase tracking-wider transition hover:cursor-pointer flex items-center gap-1.5 shadow"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      Open Offline SOP Wizard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nameToUse = offlineChemicalName || "Scanned Chemical Draft";
+                        setOfflineChemicalName(nameToUse);
+                        const generatedSop = generateLocalOfflineSop(
+                          nameToUse,
+                          offlineCasNumber || "N/A",
+                          offlineCategory || "general",
+                          offlineHazardsSelected.length > 0 ? offlineHazardsSelected : ["Toxic"],
+                          {
+                            department: metadata.department,
+                            room: metadata.room,
+                            principalInvestigator: metadata.principalInvestigator,
+                            dsr: metadata.dsr,
+                            dateCreated: metadata.dateCreated,
+                          }
+                        );
+                        setSopData(generatedSop);
+                        setSuccessMessage(`Successfully compiled EHS safe-mode protocol and created robust offline Tulane SOP draft for ${nameToUse}!`);
+                        setShowOfflineWizard(false);
+                        setErrorMessage(null);
+                      }}
+                      className="bg-white hover:bg-slate-100 text-red-900 border border-red-300 font-bold px-3 py-1.5 rounded text-[10px] uppercase tracking-wider transition hover:cursor-pointer flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-rose-600" />
+                      Instant Standard Draft {offlineChemicalName ? `(${offlineChemicalName})` : ""}
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
