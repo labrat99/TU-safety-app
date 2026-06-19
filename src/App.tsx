@@ -138,6 +138,8 @@ export default function App() {
   const [image, setImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [modalErrorMessage, setModalErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
@@ -764,15 +766,13 @@ export default function App() {
     } catch (err: any) {
       console.error("Analysis Error:", err);
       const isQuota = err.message?.toLowerCase().includes("quota") || err.message?.toLowerCase().includes("exhausted") || err.message?.toLowerCase().includes("429") || err.message?.toLowerCase().includes("limit");
-      if (isQuota) {
-        setErrorMessage(
-          "Shared Gemini API limit reached (HTTP 429: Resource Exhausted). Direct AI scanning is active on free shared tiers. To bypass this, you can click Settings to configure a personal GEMINI_API_KEY, or launch our EHS-compliant Offline Safe Draft Wizard below!"
-        );
-      } else {
-        setErrorMessage(
-          `Failed to generate SOP: ${err.message}. (Hint: You can use our science-backed Offline Compliance Safe Mode below to draft yours instantly!)`
-        );
-      }
+      const errMsg = isQuota 
+        ? "Shared Gemini API limit reached (HTTP 429: Resource Exhausted). Direct AI scanning is active on free shared tiers. To bypass this, you can click Settings to configure a personal GEMINI_API_KEY, or launch our EHS-compliant Offline Safe Draft Wizard below!"
+        : `Failed to generate SOP: ${err.message || err}`;
+      
+      setErrorMessage(errMsg);
+      setModalErrorMessage(errMsg);
+      setShowErrorModal(true);
     } finally {
       setIsGenerating(false);
     }
@@ -3675,6 +3675,87 @@ ${sopData.regulatoryReferences}
                   className="w-full bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-md cursor-pointer uppercase tracking-wider"
                 >
                   Acknowledge & Dismiss
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Interactive Extraction Error & Retry Modal Popup */}
+      <AnimatePresence>
+        {showErrorModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 z-50 no-print"
+            onClick={() => setShowErrorModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-center border-t-8 border-rose-600"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto bg-rose-50 text-rose-800 p-3.5 rounded-full w-14 h-14 flex items-center justify-center mb-4">
+                <AlertTriangle className="w-8 h-8 text-rose-600" />
+              </div>
+
+              <h3 className="text-base font-extrabold text-slate-800 tracking-tight uppercase">⚠️ Reagent Extraction Timeout</h3>
+              
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                The chemical label analyzer was unable to receive a standard response from our EHS safety server databases. This is common when the server is warming up or experiencing transient queue demand.
+              </p>
+
+              <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 my-4 text-left">
+                <span className="text-[9px] font-extrabold text-rose-600 uppercase tracking-wider block mb-1">Server Diagnostic Payload:</span>
+                <p className="text-[10px] font-mono leading-tight text-rose-900 break-words">{modalErrorMessage || "Timeout or transient server network drop (HTTP 503/404)."}</p>
+              </div>
+
+              <div className="bg-emerald-50 text-emerald-900 text-xs font-semibold px-3 py-2.5 rounded-xl border border-emerald-100 flex items-start gap-2.5 text-left mb-5 leading-relaxed">
+                <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-emerald-800 block">EHS Pro-Tip:</strong>
+                  Tapping the green button below sends a direct heartbeat to instantly spin up the server pipeline and retry extraction.
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {/* Instant Retry Action */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowErrorModal(false);
+                    scanChemicalLabel();
+                  }}
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-3 px-4 rounded-xl transition shadow-lg flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer active:scale-95"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                  Tap to Retry Extraction
+                </button>
+
+                {/* Local Offline Wizard Backup */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowErrorModal(false);
+                    setShowOfflineWizard(true);
+                    window.scrollTo({ top: 150, behavior: "smooth" });
+                  }}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 uppercase tracking-tight cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-slate-500" />
+                  Use Offline Compliance Wizard
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowErrorModal(false)}
+                  className="w-full text-[10px] text-slate-400 hover:text-slate-600 transition font-extrabold uppercase tracking-widest pt-2"
+                >
+                  Cancel & Dismiss
                 </button>
               </div>
             </motion.div>
