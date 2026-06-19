@@ -29,6 +29,9 @@ export interface SOPMetadata {
   principalInvestigator: string;
   dsr: string; // Department Safety Representative
   dateCreated: string;
+  piSignatureDate?: string;
+  ehsApproved?: boolean;
+  ehsApprovalDate?: string;
   msdsUrl?: string; // External web link to chemical MSDS/SDS
   msdsFileName?: string; // Optional attached local file name
   msdsFileData?: string; // Optional attached local file base64 data URL

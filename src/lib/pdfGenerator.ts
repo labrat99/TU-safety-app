@@ -528,8 +528,8 @@ export function generateSOPPdf(
   renderSectionHeader("12. Tulane Office of EHS & Regulatory References");
   addParagraph(sopData.regulatoryReferences || "OSHA Laboratory Standard 29 CFR 1910.1450.");
 
-  // PI COMPLIANCE SIGNATURE BLOCK (Optimized for Adobe Acrobat / Acrobat Sign)
-  if (currentY + 45 > footerY) {
+  // BOTH PI & EHS COMPLIANCE SIGNATURE BLOCKS (Optimized for Adobe Acrobat / Acrobat Sign)
+  if (currentY + 74 > footerY) {
     doc.addPage();
     totalPages++;
     drawHeaderFooter(totalPages);
@@ -538,7 +538,7 @@ export function generateSOPPdf(
 
   currentY += 2;
 
-  // Render a golden or green-accented formal box for approvals
+  // ==================== BOX 1: PI COMPLIANCE CERTIFICATION ====================
   doc.setDrawColor(COLOR_SECONDARY_GOLD[0], COLOR_SECONDARY_GOLD[1], COLOR_SECONDARY_GOLD[2]);
   doc.setFillColor(255, 251, 235); // warm gold tinted bg
   doc.setLineWidth(0.4);
@@ -604,7 +604,88 @@ export function generateSOPPdf(
   doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
   doc.text(metadata.principalInvestigator || "", labelX + 27, currentY + 20);
 
-  // Date Line
+  // Date Line for PI (using DATE SIGNED instead of approval date)
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(COLOR_MUTED_GRAY[0], COLOR_MUTED_GRAY[1], COLOR_MUTED_GRAY[2]);
+  doc.text("DATE SIGNED:", labelX, currentY + 28.5);
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.3);
+  doc.line(labelX + 26, currentY + 29, labelX + 26 + lineW, currentY + 29);
+  doc.setFont("helvetica", "semibold");
+  doc.setFontSize(8);
+  doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
+  doc.text(metadata.piSignatureDate || metadata.dateCreated || "", labelX + 27, currentY + 28);
+
+  currentY += 38;
+
+  // Ensure there's space for the next box. If not, page break.
+  if (currentY + 36 > footerY) {
+    doc.addPage();
+    totalPages++;
+    drawHeaderFooter(totalPages);
+    currentY = 22;
+  }
+
+  // ==================== BOX 2: EHS REPRESENTATIVE OFFICIAL REVIEWS ====================
+  doc.setDrawColor(COLOR_PRIMARY_GREEN[0], COLOR_PRIMARY_GREEN[1], COLOR_PRIMARY_GREEN[2]);
+  doc.setFillColor(240, 253, 244); // light green bg
+  doc.setLineWidth(0.4);
+  doc.rect(marginX, currentY, contentWidth, 34, "FD");
+
+  // Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.2);
+  doc.setTextColor(COLOR_PRIMARY_GREEN[0], COLOR_PRIMARY_GREEN[1], COLOR_PRIMARY_GREEN[2]);
+  doc.text("TULANE EHS CERTIFYING COMPLIANCE REVIEW & SYSTEM ARCHIVE", marginX + 4, currentY + 5.5);
+
+  // Core instruction text
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.2);
+  doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
+  doc.text(
+    "By signing below, the Tulane Environmental Health & Safety representative certifies this Standard Operating Procedure is officially",
+    marginX + 4,
+    currentY + 10.5
+  );
+  doc.text(
+    "verified, approved, and authorized for execution under institutional chemical safety compliance frameworks.",
+    marginX + 4,
+    currentY + 14
+  );
+
+  const ehsSigBoxY = currentY + 17;
+
+  // EHS Adobe Signature block
+  doc.setDrawColor(51, 65, 85); // slate-700
+  doc.setFillColor(254, 254, 255);
+  doc.setLineWidth(0.42);
+  doc.rect(sigBoxX, ehsSigBoxY, sigBoxW, sigBoxH, "FD");
+
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(5.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text(metadata.ehsApproved ? "[ DIGITAL EHS CERTIFIED APPROVED ]" : "[ CLICK TO CO-SIGN IN ACROBAT ]", sigBoxX + sigBoxW / 2, ehsSigBoxY + 8.5, { align: "center" });
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("EHS Authorized Representative Sign-Off:", sigBoxX, ehsSigBoxY - 1.5);
+
+  // EHS Info layout
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(COLOR_MUTED_GRAY[0], COLOR_MUTED_GRAY[1], COLOR_MUTED_GRAY[2]);
+  doc.text("PRINT EHS NAME:", labelX, currentY + 20.5);
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.3);
+  doc.line(labelX + 26, currentY + 21, labelX + 26 + lineW, currentY + 21);
+  doc.setFont("helvetica", "semibold");
+  doc.setFontSize(8);
+  doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
+  doc.text(metadata.ehsApproved ? (metadata.dsr || "Tulane OEHS Inspector") : "Awaiting Review", labelX + 27, currentY + 20);
+
+  // EHS Approval Date
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
   doc.setTextColor(COLOR_MUTED_GRAY[0], COLOR_MUTED_GRAY[1], COLOR_MUTED_GRAY[2]);
@@ -615,9 +696,9 @@ export function generateSOPPdf(
   doc.setFont("helvetica", "semibold");
   doc.setFontSize(8);
   doc.setTextColor(COLOR_CHARCOAL_TEXT[0], COLOR_CHARCOAL_TEXT[1], COLOR_CHARCOAL_TEXT[2]);
-  doc.text(metadata.dateCreated || "", labelX + 27, currentY + 28);
+  doc.text(metadata.ehsApprovalDate || (metadata.ehsApproved ? metadata.dateCreated : "PENDING APPROVED"), labelX + 27, currentY + 28);
 
-  // Verification Seal
+  // EHS Verification Seal inside this EHS signature box!
   const sealX = marginX + 136;
   const sealY = currentY + 17;
   doc.setDrawColor(COLOR_PRIMARY_GREEN[0], COLOR_PRIMARY_GREEN[1], COLOR_PRIMARY_GREEN[2]);

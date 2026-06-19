@@ -267,11 +267,39 @@ app.post("/api/sop", (req, res): any => {
     const record = { id, metadata, sop, scannedAt, imageThumbnail };
     writeSopsFile(id, record);
 
-    const protocol = req.headers["x-forwarded-proto"] || "http";
-    const host = req.get("host");
-    const viewUrl = `${protocol}://${host}/?sopId=${id}`;
+    // Extract robust host for external mobile browser compatibility
+    let devHost = (req.headers["x-forwarded-host"] as string) || req.headers["host"] || req.get("host") || "localhost:3000";
+    let protocol = (req.headers["x-forwarded-proto"] as string) || "https";
 
-    res.json({ success: true, id, viewUrl });
+    // If Referer header exists, resolve devHost from the actual website page
+    const referer = req.headers["referer"];
+    if (referer) {
+      try {
+        const refUrl = new URL(referer);
+        if (refUrl.host && !refUrl.host.includes("localhost") && !refUrl.host.includes("127.0.0.1")) {
+          devHost = refUrl.host;
+          protocol = refUrl.protocol.replace(":", "");
+        }
+      } catch (e) {
+        // Fallback safely
+      }
+    }
+
+    // Default to https for Cloud Run
+    if (devHost.includes("run.app") || devHost.includes("aistudio")) {
+      protocol = "https";
+    }
+
+    // Create a public pre-shared domain counterpart
+    let preHost = devHost;
+    if (preHost.includes("ais-dev-")) {
+      preHost = preHost.replace("ais-dev-", "ais-pre-");
+    }
+
+    const viewUrl = `${protocol}://${preHost}/?sopId=${id}`;
+    const devViewUrl = `${protocol}://${devHost}/?sopId=${id}`;
+
+    res.json({ success: true, id, viewUrl, devViewUrl });
   } catch (err: any) {
     console.error("Failed to save SOP share record:", err);
     res.status(500).json({ error: err.message || "Failed to save share record." });

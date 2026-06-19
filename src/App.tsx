@@ -27,7 +27,9 @@ import {
   Skull,
   Droplet,
   Zap,
-  ShieldAlert
+  ShieldAlert,
+  Send,
+  ShieldCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import QRCode from "qrcode";
@@ -48,6 +50,9 @@ export default function App() {
     principalInvestigator: "",
     dsr: "",
     dateCreated: "",
+    piSignatureDate: "",
+    ehsApproved: false,
+    ehsApprovalDate: "",
     msdsUrl: "",
     msdsFileName: "",
     msdsFileData: "",
@@ -136,6 +141,10 @@ export default function App() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
+  const [showVaultSavedAlert, setShowVaultSavedAlert] = useState(false);
+  const [vaultSavedChemicalName, setVaultSavedChemicalName] = useState("");
+  const [vaultSavedCasNumber, setVaultSavedCasNumber] = useState("");
+  const [currentRole, setCurrentRole] = useState<"PI" | "EHS">("PI");
 
   // Local offline draft wizard state
   const [showOfflineWizard, setShowOfflineWizard] = useState(false);
@@ -152,7 +161,10 @@ export default function App() {
   // QR code / Digital Share server states
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [qrCodeUrlDev, setQrCodeUrlDev] = useState<string | null>(null);
   const [digitalViewUrl, setDigitalViewUrl] = useState<string | null>(null);
+  const [devViewUrl, setDevViewUrl] = useState<string | null>(null);
+  const [qrUrlType, setQrUrlType] = useState<"public" | "dev">("public");
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
   const [isUrlSopLoading, setIsUrlSopLoading] = useState(false);
 
@@ -254,6 +266,13 @@ export default function App() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handlePiSubmitAction = () => {
+    if (!sopData) return;
+    setMetadata(prev => ({ ...prev, ehsApproved: false }));
+    saveActiveSopToLibrary();
+    setSuccessMessage(`SOP draft for ${sopData.chemicalName || "chemical"} certified by PI and successfully submitted to the EHS review queue!`);
   };
 
   // Fetch and Load SOP from digital server or local storage
@@ -789,6 +808,10 @@ export default function App() {
         setSuccessMessage("Standard Operating Procedure finalized and saved to Tulane Safe Lab Library Vault!");
       }
 
+      setVaultSavedChemicalName(sopData.chemicalName || "Custom Chemical Reactant");
+      setVaultSavedCasNumber(sopData.casNumber || "N/A");
+      setShowVaultSavedAlert(true);
+
       updateSavedRecords(nextRecords);
     } catch (e) {
       console.error("Error saving record:", e);
@@ -886,6 +909,155 @@ export default function App() {
     } catch (err: any) {
       console.error("PDF generation took an unexpected error:", err);
       setErrorMessage(`Could not export PDF automatically: ${err?.message || err}`);
+    }
+  };
+
+  // Export editable MS Word SOP Document using client-side HTML-to-Word generation
+  const triggerExportSOPWord = () => {
+    if (!sopData) return;
+    try {
+      const htmlContent = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset="utf-8">
+          <title>Tulane EHS SOP - ${sopData.chemicalName}</title>
+          <style>
+            body { font-family: 'Arial', sans-serif; line-height: 1.5; color: #1e293b; padding: 24px; }
+            h1 { color: #064e3b; border-bottom: 2px solid #064e3b; padding-bottom: 8px; font-size: 20pt; margin-bottom: 12px; font-family: 'Georgia', serif; }
+            h2 { color: #15803d; font-size: 14pt; margin-top: 22px; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; font-family: 'Georgia', serif; }
+            h3 { color: #1e3a8a; font-size: 11pt; margin-top: 15px; margin-bottom: 6px; }
+            .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            .meta-table td { padding: 6px 10px; border: 1px solid #cbd5e1; font-size: 9.5pt; }
+            .meta-table .label { font-weight: bold; background-color: #f1f5f9; color: #475569; width: 150px; }
+            p, li { font-size: 10.5pt; color: #334155; margin-bottom: 8px; }
+            ul { margin-top: 4px; margin-bottom: 12px; padding-left: 20px; }
+            .footer { margin-top: 35px; font-size: 8.5pt; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 8px; text-align: center; }
+            .hazards-box { background-color: #fffbeb; border: 1px solid #fcd34d; padding: 12px; border-radius: 6px; margin-bottom: 15px; }
+            .signature-section { margin-top: 40px; border-top: 2px dashed #cbd5e1; padding-top: 15px; }
+            .sig-box { display: inline-block; width: 45%; vertical-align: top; margin-right: 4%; }
+            .sig-line { border-bottom: 1px solid #475569; height: 35px; margin-bottom: 5px; }
+          </style>
+        </head>
+        <body>
+          <h1>Standard Operating Procedure (SOP)</h1>
+          <p style="font-size: 11.5pt; font-weight: bold; color: #15803d; margin-top: -8px; margin-bottom: 24px;">
+            Tulane University Office of Environmental Health & Safety (EHS) Compliance Workstation
+          </p>
+          
+          <table class="meta-table">
+            <tr>
+              <td class="label">Chemical Name:</td>
+              <td style="font-weight: bold; color: #064e3b;">${sopData.chemicalName || "Custom Chemical"}</td>
+              <td class="label">CAS Registry No:</td>
+              <td>${sopData.casNumber || "N/A"}</td>
+            </tr>
+            <tr>
+              <td class="label">Date Created:</td>
+              <td>${metadata.dateCreated || "N/A"}</td>
+              <td class="label">Department:</td>
+              <td>${metadata.department || "N/A"}</td>
+            </tr>
+            <tr>
+              <td class="label">Room / Lab:</td>
+              <td>Room ${metadata.room || "N/A"}</td>
+              <td class="label">Principal Investigator (PI):</td>
+              <td>${metadata.principalInvestigator || "N/A"}</td>
+            </tr>
+            <tr>
+              <td class="label">DSR Coordinator:</td>
+              <td>${metadata.dsr || "N/A"}</td>
+              <td class="label">EHS Approval Status:</td>
+              <td style="font-weight: bold; color: ${metadata.ehsApproved ? "#15803d" : "#b45309"}">
+                ${metadata.ehsApproved ? `APPROVED` : "PENDING REVIEW"}
+              </td>
+            </tr>
+            ${metadata.ehsApprovalDate ? `
+            <tr>
+              <td class="label">EHS Approval Date:</td>
+              <td colspan="3" style="font-weight: bold;">${metadata.ehsApprovalDate}</td>
+            </tr>
+            ` : ""}
+          </table>
+
+          <h2>1. Purpose of SOP</h2>
+          <p>${(sopData.purpose || "No custom SOP intent specified.").replace(/\n/g, '<br>')}</p>
+
+          <h2>2. Roles and Responsibilities</h2>
+          <p>${(sopData.responsibilities || "None declared.").replace(/\n/g, '<br>')}</p>
+
+          <h2>3. Primary Chemical Hazards</h2>
+          <div class="hazards-box">
+            <p><strong>Primary Hazard Classifications:</strong> ${sopData.hazards.join(", ") || "None declared"}</p>
+            <p><strong>Specific Chemical Hazards:</strong> ${sopData.additionalHazards || "No custom hazards specified."}</p>
+          </div>
+
+          <h2>4. Safety Measures & Engineering Controls</h2>
+          <p><strong>Engineering Controls / Containment:</strong><br>${(sopData.safetyMeasures?.engineeringControls || "None specified").replace(/\n/g, '<br>')}</p>
+          <p><strong>Personal Protective Equipment (PPE):</strong><br>${(sopData.safetyMeasures?.ppe || "None specified").replace(/\n/g, '<br>')}</p>
+          <p><strong>Safer Alternatives or Substitutions:</strong><br>${(sopData.safetyMeasures?.saferAlternatives || "None specified").replace(/\n/g, '<br>')}</p>
+
+          <h2>5. Safe Handling & Experimental Procedures</h2>
+          <p>${(sopData.handlingProcedures || "None designated.").replace(/\n/g, '<br>')}</p>
+
+          <h2>6. Safe Storage Requirements</h2>
+          <p>${(sopData.storageRequirements || "None designated.").replace(/\n/g, '<br>')}</p>
+
+          <h2>7. Emergency Spill Response & First Aid</h2>
+          <p><strong>Spill Response Protocol:</strong><br>${(sopData.spillAndFirstAid?.spillProcedures || "None designated.").replace(/\n/g, '<br>')}</p>
+          <p><strong>First Aid Instructions:</strong><br>${(sopData.spillAndFirstAid?.firstAid || "None designated.").replace(/\n/g, '<br>')}</p>
+          <p><strong>Emergency Locations (Shower, Eye-wash):</strong><br>${(sopData.spillAndFirstAid?.emergencyLocations || "None designated.").replace(/\n/g, '<br>')}</p>
+
+          <h2>8. Safe Disposal Guidelines</h2>
+          <p>${(sopData.disposalGuidelines || "None designated.").replace(/\n/g, '<br>')}</p>
+
+          <h2>9. Training Requirements</h2>
+          <p>${(sopData.trainingRequirements || "None designated.").replace(/\n/g, '<br>')}</p>
+
+          <h2>10. Document Controls, Testing & Testing Cycles</h2>
+          <p>${(sopData.testingAndDocumentation || "None designated.").replace(/\n/g, '<br>')}</p>
+
+          <h2>11. OSHA / EHS Legal References</h2>
+          <p>${(sopData.regulatoryReferences || "None designated.").replace(/\n/g, '<br>')}</p>
+
+          <div class="signature-section">
+            <h3>Tulane University Compliance Signatures</h3>
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <p><strong>Principal Investigator Signature</strong><br>
+              PI Name: ${metadata.principalInvestigator || "____________________"}<br>
+              Date Certified: ${metadata.piSignatureDate || metadata.dateCreated || "__________"}</p>
+            </div>
+            <div class="sig-box" style="margin-left: 20px;">
+              <div class="sig-line"></div>
+              <p><strong>EHS Representative Certification</strong><br>
+              EHS Representative: ${metadata.ehsApproved ? (metadata.dsr || "Tulane OEHS Inspector") : "____________________"}<br>
+              Approval Date: ${metadata.ehsApprovalDate || "AWAITING APPROVAL"}</p>
+            </div>
+          </div>
+
+          <div class="footer">
+            <p>This is an official Tulane University Chemical Safety Standard Operating Procedure draft document.</p>
+            <p>© 2026 Tulane University Chemical Safety SOP Workstation • EHS Compliant MS Word Export</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob(['\ufeff' + htmlContent], { type: 'application/msword' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Tulane_EHS_SOP_${(sopData.chemicalName || "chemical").trim().replace(/\s+/g, '_')}.doc`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setSuccessMessage("Standard Operating Procedure exported successfully as an editable MS Word document!");
+      setTimeout(() => setSuccessMessage(null), 5000);
+    } catch (err: any) {
+      console.error("Word document generation failure:", err);
+      setErrorMessage(`Could not export to Word: ${err?.message || err}`);
     }
   };
 
@@ -1007,7 +1179,7 @@ ${sopData.regulatoryReferences}
         throw new Error(data.error || "Missing digital view URL from the server.");
       }
       
-      // Draw standard QR code using the 'qrcode' library
+      // Draw standard QR code for public share using the 'qrcode' library
       const qrDataUrl = await QRCode.toDataURL(data.viewUrl, {
         width: 350,
         margin: 2,
@@ -1016,9 +1188,21 @@ ${sopData.regulatoryReferences}
           light: "#ffffff",
         }
       });
+
+      // Draw standard QR code for development bypass using the 'qrcode' library
+      const qrDataUrlDev = await QRCode.toDataURL(data.devViewUrl || data.viewUrl, {
+        width: 350,
+        margin: 2,
+        color: {
+          dark: "#0369a1", // Dark blue/sky-700
+          light: "#ffffff",
+        }
+      });
       
       setQrCodeUrl(qrDataUrl);
+      setQrCodeUrlDev(qrDataUrlDev);
       setDigitalViewUrl(data.viewUrl);
+      setDevViewUrl(data.devViewUrl || data.viewUrl);
       setShowQrModal(true);
       
       const isAlreadySaved = savedRecords.some(r => r.id === recordId);
@@ -1831,11 +2015,19 @@ ${sopData.regulatoryReferences}
                     </button>
                     <button
                       onClick={triggerExportSOPPdf}
-                      className="bg-amber-500 hover:bg-amber-600 text-emerald-950 text-xs px-3.5 py-1.5 rounded-lg transition font-bold flex items-center gap-1.5 shadow-sm"
+                      className="bg-amber-500 hover:bg-amber-600 text-emerald-950 text-xs px-3.5 py-1.5 rounded-lg transition font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
                       title="Export formal PDF with proper pagination & EHS layout"
                     >
                       <FileDown className="w-3.5 h-3.5" />
                       Export EHS PDF
+                    </button>
+                    <button
+                      onClick={triggerExportSOPWord}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3.5 py-1.5 rounded-lg transition font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      title="Export official editable MS Word format document"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      Export MS Word
                     </button>
                     <button
                       onClick={triggerPrintSOP}
@@ -2832,6 +3024,41 @@ ${sopData.regulatoryReferences}
                       
                       {/* HIGH FIDELITY ADOBE ACROBAT PI COMPLIANCE SIGNATURE BLOCK */}
                       <div className="bg-amber-50/45 border border-amber-500/80 rounded-lg p-3.5 print:bg-amber-50/20 print:border-amber-600 no-print-break print:break-inside-avoid">
+                        
+                        {/* ROLE SELECTOR FOR WORKSPACE - Hidden in Print */}
+                        <div className="no-print bg-slate-100 p-2.5 rounded-lg flex flex-wrap items-center justify-between gap-3 border border-slate-200 mb-4 text-xs font-sans">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-emerald-700 rounded-full inline-block animate-ping" />
+                            <span className="font-extrabold text-slate-700 uppercase tracking-widest text-[9px]">
+                              Active Workflow Simulation Role:
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setCurrentRole("PI")}
+                              className={`px-3 py-1 rounded text-[10px] font-extrabold uppercase transition-all tracking-wider cursor-pointer ${
+                                currentRole === "PI"
+                                  ? "bg-emerald-800 text-white shadow-md border border-emerald-900"
+                                  : "bg-white text-slate-500 hover:text-slate-800 border border-slate-200"
+                              }`}
+                            >
+                              Principal Investigator (PI) Mode
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCurrentRole("EHS")}
+                              className={`px-3 py-1 rounded text-[10px] font-extrabold uppercase transition-all tracking-wider cursor-pointer ${
+                                currentRole === "EHS"
+                                  ? "bg-slate-800 text-white shadow-md border border-slate-900"
+                                  : "bg-white text-slate-500 hover:text-slate-800 border border-slate-200"
+                              }`}
+                            >
+                              Tulane EHS Officer Mode
+                            </button>
+                          </div>
+                        </div>
+
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 border-b border-amber-200/50 pb-2.5">
                           <div>
                             <h5 className="font-bold text-emerald-950 text-[11px] uppercase tracking-wide">
@@ -2850,87 +3077,187 @@ ${sopData.regulatoryReferences}
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-end">
+                        {/* SECTION 1: PRINCIPAL INVESTIGATOR VALIDATION (ROW 1) */}
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end pb-4 border-b border-amber-200/40">
                           {/* Left: HTML5 Interactive Touch-screen/Tablet Signature Pad */}
-                          <div className="sm:col-span-6 flex flex-col justify-end">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="block text-[8.5px] font-bold text-neutral-700 uppercase tracking-wide">
-                                PI Direct Digital Signature (Tablet/Stylus):
+                          <div className="md:col-span-6 flex flex-col justify-end">
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="block text-[8.5px] font-bold text-neutral-800 uppercase tracking-widest flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 bg-amber-600 rounded-full inline-block" />
+                                1. PI Signature (Tablet / Stylus)
                               </span>
                               <button
                                 type="button"
                                 onClick={clearSignatureCanvas}
-                                className="text-[8px] text-red-650 hover:text-red-800 font-bold uppercase tracking-wider bg-red-50 hover:bg-red-105/70 px-2 py-0.5 rounded transition cursor-pointer no-print border border-red-200"
+                                className="text-[8px] text-red-650 hover:text-red-800 font-extrabold uppercase tracking-wider bg-red-50 hover:bg-red-100/75 px-2 py-0.5 rounded transition cursor-pointer no-print border border-red-200"
                               >
-                                Clear
+                                Clear Signature
                               </button>
                             </div>
-                            <div className="flex gap-3 items-stretch">
-                              {/* Canvas Signature Pad */}
-                              <div className="flex-1 relative border border-slate-300 bg-white rounded overflow-hidden aspect-[4/1.2] shadow-inner flex items-center justify-center">
-                                <canvas
-                                  ref={signatureCanvasRef}
-                                  onMouseDown={startSignatureDrawing}
-                                  onMouseMove={drawSignature}
-                                  onMouseUp={stopSignatureDrawing}
-                                  onMouseLeave={stopSignatureDrawing}
-                                  onTouchStart={startSignatureDrawing}
-                                  onTouchMove={drawSignature}
-                                  onTouchEnd={stopSignatureDrawing}
-                                  width={450}
-                                  height={120}
-                                  className="w-full h-full block bg-white hover:cursor-crosshair"
-                                  style={{ touchAction: "none" }}
-                                />
-                                <div className="absolute pointer-events-none text-[8px] text-slate-300 font-mono tracking-wider transition uppercase right-2 bottom-1.5 print:hidden select-none">
-                                  ✍️ Sign here directly
-                                </div>
-                              </div>
-                              
-                              {/* Interactive Date Picker next to signature pad */}
-                              <div className="w-[125px] shrink-0 flex flex-col justify-end no-print">
-                                <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-wide mb-1">
-                                  Signature Date:
-                                </span>
-                                <div className="relative border border-slate-300 bg-white rounded p-1 shadow-inner h-[52px] flex items-center justify-center">
-                                  <input
-                                    type="date"
-                                    value={metadata.dateCreated || ""}
-                                    onChange={(e) => setMetadata(prev => ({ ...prev, dateCreated: e.target.value }))}
-                                    title="Choose or edit approval date"
-                                    className="w-full h-full bg-transparent border-0 text-[10px] font-bold font-mono text-neutral-800 focus:ring-0 outline-none p-1 cursor-pointer text-center"
-                                  />
-                                </div>
+                            <div className="relative border border-slate-300 bg-white rounded-lg overflow-hidden aspect-[4/1] shadow-inner flex items-center justify-center min-h-[90px]">
+                              <canvas
+                                ref={signatureCanvasRef}
+                                onMouseDown={startSignatureDrawing}
+                                onMouseMove={drawSignature}
+                                onMouseUp={stopSignatureDrawing}
+                                onMouseLeave={stopSignatureDrawing}
+                                onTouchStart={startSignatureDrawing}
+                                onTouchMove={drawSignature}
+                                onTouchEnd={stopSignatureDrawing}
+                                width={450}
+                                height={110}
+                                className="w-full h-full block bg-white hover:cursor-crosshair"
+                                style={{ touchAction: "none" }}
+                              />
+                              <div className="absolute pointer-events-none text-[8px] text-slate-300 font-mono tracking-wider transition uppercase right-3 bottom-1.5 print:hidden select-none">
+                                ✍️ Sign here directly
                               </div>
                             </div>
                           </div>
 
-                          {/* Middle: Printed Name */}
-                          <div className="sm:col-span-3 pb-0.5">
-                            <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">
-                              PI Printed Name
+                          {/* Middle: Printed Name (Spacious with standard bottom border) */}
+                          <div className="md:col-span-3 pb-0.5">
+                            <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+                              2. PI Printed Name
                             </span>
-                            <div className="border-b border-neutral-350 py-2 text-[11px] font-semibold text-neutral-800 min-h-[38px] flex items-end">
+                            <div className="border-b border-neutral-350 py-2.5 text-[11px] font-bold text-neutral-800 min-h-[38px] flex items-end">
                               {metadata.principalInvestigator || "_________________________________"}
                             </div>
                           </div>
 
-                          {/* Right: Date field (Print and final status display) */}
-                          <div className="sm:col-span-3 pb-0.5">
-                            <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">
-                              Approval Date
+                          {/* Right: Signature Date for PI */}
+                          <div className="md:col-span-3 pb-0.5">
+                            <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+                              3. PI Signature Date
                             </span>
-                            <div className="border-b border-neutral-355 py-2 text-[11px] font-semibold text-neutral-800 min-h-[38px] flex items-end">
-                              {metadata.dateCreated || "__________________"}
+                            <div className="relative border-b border-neutral-350 min-h-[38px] flex items-end pb-1 font-mono font-bold text-neutral-800">
+                              <input
+                                type="date"
+                                value={metadata.piSignatureDate || metadata.dateCreated || ""}
+                                onChange={(e) => setMetadata(prev => ({ ...prev, piSignatureDate: e.target.value, dateCreated: e.target.value }))}
+                                disabled={currentRole !== "PI"}
+                                title="Date PI signed the SOP"
+                                className={`w-full bg-transparent border-0 text-[10px] font-bold font-mono text-neutral-800 focus:ring-0 outline-none p-0 cursor-pointer ${
+                                  currentRole !== "PI" ? "opacity-60 cursor-not-allowed" : ""
+                                }`}
+                              />
+                              {currentRole !== "PI" && (
+                                <span className="absolute right-0 bottom-1.5 text-[7px] text-slate-400 font-mono uppercase bg-slate-100 px-1 py-0.5 rounded tracking-tighter no-print">
+                                  PI Only
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
+
+                        {/* SECTION 2: TULANE EHS COMPLIANCE REVIEW & APPROVAL (ROW 2) */}
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end pt-5">
+                          {/* Left: Interactive Submission & Approval Control */}
+                          <div className="md:col-span-6 flex flex-col justify-end">
+                            <span className="block text-[8.5px] font-bold text-neutral-800 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                              <span className={`w-1.5 h-1.5 rounded-full inline-block ${metadata.ehsApproved ? "bg-emerald-600 animate-ping" : "bg-amber-500 animate-pulse"}`} />
+                              4. Tulane compliance approval status
+                            </span>
+                            
+                            <div className="bg-white border border-slate-250 p-3 rounded-lg shadow-inner">
+                              <div className="flex gap-2 items-center justify-between">
+                                <div className="flex flex-col">
+                                  <span className="text-[7.5px] text-neutral-400 font-extrabold uppercase tracking-widest leading-none mb-1">
+                                    Approved Status:
+                                  </span>
+                                  <span className={`text-[10px] font-bold tracking-tight uppercase ${
+                                    metadata.ehsApproved ? "text-emerald-800" : "text-amber-800"
+                                  }`}>
+                                    {metadata.ehsApproved ? "✓ APPROVED BY TULANE EHS" : "⏱ AWAITING EHS REVIEW"}
+                                  </span>
+                                </div>
+
+                                <div className="shrink-0 no-print">
+                                  {currentRole === "PI" ? (
+                                    <button
+                                      type="button"
+                                      onClick={handlePiSubmitAction}
+                                      className="bg-emerald-800 hover:bg-emerald-900 border border-emerald-900/40 text-white text-[9.5px] font-bold uppercase px-3 py-1.5 rounded-md transition duration-150 cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                    >
+                                      <Send className="w-3 h-3" />
+                                      Submit to EHS
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const today = new Date().toISOString().split("T")[0];
+                                        setMetadata(prev => ({
+                                          ...prev,
+                                          ehsApproved: !prev.ehsApproved,
+                                          ehsApprovalDate: !prev.ehsApproved ? today : ""
+                                        }));
+                                      }}
+                                      className={`text-[9px] font-bold uppercase px-3 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                                        metadata.ehsApproved
+                                          ? "bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-300"
+                                          : "bg-emerald-800 hover:bg-emerald-900 text-white border border-emerald-900"
+                                      }`}
+                                    >
+                                      <ShieldCheck className="w-3 h-3" />
+                                      {metadata.ehsApproved ? "Revoke Approval" : "Approve SOP Draft"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-[7.5px] text-neutral-500 leading-normal mt-1.5 border-t border-slate-100 pt-1.5">
+                                {currentRole === "PI" 
+                                  ? "ℹ️ Active Role: Principal Investigator. Submit draft once you clear drawings & certs."
+                                  : "ℹ️ Active Role: Tulane EHS. Sign-offs are granted with official authority."
+                                }
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Middle: Approved By (EHS personnel) */}
+                          <div className="md:col-span-3 pb-0.5">
+                            <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+                              5. Approved By (EHS Rep)
+                            </span>
+                            <div className="border-b border-neutral-350 py-2.5 text-[11px] font-bold text-neutral-800 min-h-[38px] flex items-end">
+                              {metadata.ehsApproved ? (metadata.dsr || "Tulane OEHS Inspector") : "_________________________________"}
+                            </div>
+                          </div>
+
+                          {/* Right: Date field (Official Approval Date, locked for PI, active for EHS) */}
+                          <div className="md:col-span-3 pb-0.5">
+                            <span className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+                              6. EHS Approval Date
+                            </span>
+                            <div className="relative border-b border-neutral-350 min-h-[38px] flex items-end pb-1 font-mono font-bold text-neutral-800">
+                              <input
+                                type="date"
+                                value={metadata.ehsApprovalDate || ""}
+                                onChange={(e) => setMetadata(prev => ({ ...prev, ehsApprovalDate: e.target.value }))}
+                                disabled={currentRole !== "EHS"}
+                                title="Official EHS Approval Date"
+                                className={`w-full bg-transparent border-0 text-[10px] font-bold font-mono text-neutral-800 focus:ring-0 outline-none p-0 cursor-pointer ${
+                                  currentRole !== "EHS" ? "opacity-60 cursor-not-allowed text-neutral-400" : ""
+                                }`}
+                              />
+                              {currentRole !== "EHS" && (
+                                <span className="absolute right-0 bottom-1.5 text-[7px] text-rose-700 font-extrabold uppercase bg-rose-50 border border-rose-100 px-1 py-0.5 rounded tracking-tighter no-print animate-pulse">
+                                  Locked (EHS)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
                       </div>
                     </div>
 
                   </div>
 
                 </div>
+
+                {/* Mobile spacer so sticky bottom action bar doesn't obscure standard form controls or signature fields */}
+                <div className="h-28 lg:hidden no-print" />
 
               </div>
             )}
@@ -2957,7 +3284,7 @@ ${sopData.regulatoryReferences}
                   
                   <div className="space-y-2">
                     <span className="font-bold text-slate-800 text-sm block">3. Review, Tweak & Print EHS</span>
-                    <p>Once generated, you can directly edit any field in the draft forms! The high-fidelity safety template reacts instantly. Tap "Print" to export a clean, compliant physical paper worksheet for your fume hood.</p>
+                    <p>Once generated, you can directly edit any field in the draft forms! The high-fidelity safety template reacts instantly. Tap "Print" to export a clean, compliant worksheet to upload to SciShield for Tulane EHS review.</p>
                   </div>
 
                 </div>
@@ -3185,61 +3512,250 @@ ${sopData.regulatoryReferences}
               className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 text-center border-t-8 border-emerald-700"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="mx-auto bg-emerald-50 text-emerald-800 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-4">
-                <QrCode className="w-8 h-8" />
+              <div className="mx-auto bg-emerald-50 text-emerald-800 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-3">
+                <QrCode className="w-8 h-8 text-emerald-700" />
               </div>
               
-              <h3 className="text-base font-bold text-slate-800">SOP Digital Access QR Code</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Scan this QR code with a tablet or mobile device in the lab to view and edit this digital Standard Operating Procedure (SOP) live on the bench.
+              <h3 className="text-base font-bold text-slate-800">SOP Digital Access</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Scan with a mobile phone or tablet to view and edit this SOP live in the lab.
               </p>
 
+              {/* Segmented Control for Public share vs Developer sandbox */}
+              <div className="flex bg-slate-100 p-1 rounded-lg my-4 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setQrUrlType("public")}
+                  className={`flex-1 py-1.5 text-[11px] font-bold rounded-md transition ${
+                    qrUrlType === "public"
+                      ? "bg-white text-emerald-800 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  🚀 Public Share Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQrUrlType("dev")}
+                  className={`flex-1 py-1.5 text-[11px] font-bold rounded-md transition ${
+                    qrUrlType === "dev"
+                      ? "bg-white text-sky-800 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  🛠️ Developer Sandbox
+                </button>
+              </div>
+
               {/* QR Code image visual */}
-              <div className="bg-slate-100 rounded-xl p-4 my-5 flex items-center justify-center border border-slate-200">
-                <div className="bg-white p-3.5 rounded-lg shadow-inner">
+              <div className="bg-slate-50 rounded-xl p-4 my-3 flex flex-col items-center justify-center border border-slate-200/80">
+                <div className="bg-white p-3 rounded-lg shadow-sm border border-slate-150">
                   <img 
-                    src={qrCodeUrl} 
+                    src={qrUrlType === "public" ? qrCodeUrl : (qrCodeUrlDev || qrCodeUrl)} 
                     alt="SOP QR Code" 
-                    className="w-56 h-56 object-contain"
+                    className="w-48 h-48 object-contain"
                     referrerPolicy="no-referrer"
                   />
                 </div>
+                
+                {/* Mode-specific context explanations */}
+                {qrUrlType === "public" ? (
+                  <div className="mt-3 text-left bg-emerald-50 text-emerald-850 text-[10px] p-3 rounded-lg border border-emerald-100 space-y-1">
+                    <p className="font-bold text-emerald-900">⚠️ Active Deployment Required:</p>
+                    <p className="leading-relaxed text-emerald-700">
+                      To open this link on your phone, you <strong>must click the "Share" button</strong> in the top-right of your AI Studio browser window. That deploys the app to the public preview server (404 page otherwise).
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-3 text-left bg-sky-50 text-sky-850 text-[10px] p-3 rounded-lg border border-sky-100 space-y-1">
+                    <p className="font-bold text-sky-900">🔒 Secure Dev Environment:</p>
+                    <p className="leading-relaxed text-sky-700">
+                      Loads your active playground code directly on your phone, but requires you to be logged into your Developer Google Account (the email associated with AI Studio) on your mobile Safari/Chrome browser.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-2.5 text-left text-[10px] text-emerald-800 space-y-1">
-                <p className="text-center font-bold font-mono tracking-tight text-[11px] select-all break-all text-emerald-900">
-                  {digitalViewUrl}
-                </p>
-                <p className="text-center text-[9px] text-emerald-600 mt-1">
-                  Registered on Tulane safety servers. Survives browser cache clears.
+              <div className={`border rounded-lg p-2.5 text-left text-[10px] space-y-1 ${
+                qrUrlType === "public" 
+                  ? "bg-emerald-50/40 border-emerald-100 text-emerald-800" 
+                  : "bg-sky-50/40 border-sky-100 text-sky-800"
+              }`}>
+                <p className={`text-center font-bold font-mono tracking-tight text-[10.5px] select-all break-all ${
+                  qrUrlType === "public" ? "text-emerald-900" : "text-sky-900"
+                }`}>
+                  {qrUrlType === "public" ? digitalViewUrl : devViewUrl}
                 </p>
               </div>
 
-              <div className="mt-5 flex gap-2">
+              <div className="mt-4 flex gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    if (digitalViewUrl) {
-                      navigator.clipboard.writeText(digitalViewUrl);
-                      setSuccessMessage("Digital SOP link copied to clipboard!");
+                    const targetUrl = qrUrlType === "public" ? digitalViewUrl : devViewUrl;
+                    if (targetUrl) {
+                      navigator.clipboard.writeText(targetUrl);
+                      setSuccessMessage("SOP URL copied to clipboard!");
+                      setTimeout(() => setSuccessMessage(null), 4000);
                     }
                   }}
                   className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold py-2 rounded-lg transition"
                 >
-                  Copy Link
+                  Copy URL
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowQrModal(false)}
-                  className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 rounded-lg transition shadow-sm"
+                  className={`flex-1 text-white text-xs font-bold py-2 rounded-lg transition shadow-sm ${
+                    qrUrlType === "public" 
+                      ? "bg-emerald-700 hover:bg-emerald-800" 
+                      : "bg-sky-700 hover:bg-sky-800"
+                  }`}
                 >
-                  Done
+                  Close
                 </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Safety Vault Saved Alert Popup Dialog */}
+      <AnimatePresence>
+        {showVaultSavedAlert && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 z-50 no-print"
+            onClick={() => setShowVaultSavedAlert(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center border-t-8 border-emerald-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto bg-emerald-50 text-emerald-800 p-3.5 rounded-full w-14 h-14 flex items-center justify-center mb-4">
+                <CheckCircle className="w-8 h-8 text-emerald-700" />
+              </div>
+
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">SOP Archived to safety Vault</h3>
+              <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                The chemical safety protocol and Tulane OEHS compliant signatures have been successfully cataloged inside your digital lab vault record repository.
+              </p>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 my-4 text-left font-sans space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400 font-extrabold uppercase tracking-widest text-[8px]">Chemical:</span>
+                  <span className="font-extrabold text-slate-700 uppercase tracking-tight">{vaultSavedChemicalName}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs border-t border-slate-150 pt-2">
+                  <span className="text-slate-400 font-extrabold uppercase tracking-widest text-[8px]">CAS No:</span>
+                  <span className="font-mono font-bold text-slate-600">{vaultSavedCasNumber}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs border-t border-slate-150 pt-2">
+                  <span className="text-slate-400 font-extrabold uppercase tracking-widest text-[8px]">Vault Security:</span>
+                  <span className="text-[9px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded tracking-wide uppercase flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-650 rounded-full animate-ping inline-block" />
+                    Secure Active
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-400 font-mono italic">
+                Device storage snapshot synchronised successfully.
+              </div>
+
+              <div className="mt-5">
+                <button
+                  type="button"
+                  onClick={() => setShowVaultSavedAlert(false)}
+                  className="w-full bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-md cursor-pointer uppercase tracking-wider"
+                >
+                  Acknowledge & Dismiss
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MOBILE STICKY FLOATING ACTION DOCK (Visible on Mobile Only, Hidden in Print) */}
+      {sopData && !isGenerating && (
+        <div className="fixed bottom-4 left-4 right-4 z-40 lg:hidden no-print">
+          <div className="bg-slate-900/95 backdrop-blur-md shadow-2xl border border-slate-700/80 rounded-2xl px-4 py-3 flex items-center justify-around gap-2 text-white">
+            
+            {/* Save to Vault Action Button */}
+            <button
+              onClick={saveActiveSopToLibrary}
+              type="button"
+              className="flex flex-col items-center gap-1 text-slate-300 hover:text-white transition active:scale-95"
+              title="Save SOP to Library Vault"
+            >
+              <div className="bg-emerald-600/95 text-white p-2.5 rounded-xl">
+                <Save className="w-4.5 h-4.5" />
+              </div>
+              <span className="text-[10px] font-bold tracking-tight">Save Vault</span>
+            </button>
+
+            {/* Share QR Action Button */}
+            <button
+              onClick={generateSopQrAction}
+              disabled={isGeneratingQr}
+              type="button"
+              className="flex flex-col items-center gap-1 text-slate-300 hover:text-white transition active:scale-95 disabled:opacity-50"
+              title="Generate Access QR Code"
+            >
+              <div className="bg-emerald-800 text-emerald-300 p-2.5 rounded-xl border border-emerald-600/40">
+                <QrCode className="w-4.5 h-4.5" />
+              </div>
+              <span className="text-[10px] font-bold tracking-tight">Tools/QR</span>
+            </button>
+
+            {/* Export PDF Action Button */}
+            <button
+              onClick={triggerExportSOPPdf}
+              type="button"
+              className="flex flex-col items-center gap-1 text-slate-300 hover:text-white transition active:scale-95"
+              title="Download OSHA PDF"
+            >
+              <div className="bg-amber-500 text-slate-950 p-2.5 rounded-xl">
+                <FileDown className="w-4.5 h-4.5" />
+              </div>
+              <span className="text-[10px] font-bold tracking-tight">Export PDF</span>
+            </button>
+
+            {/* Export Word Action Button */}
+            <button
+              onClick={triggerExportSOPWord}
+              type="button"
+              className="flex flex-col items-center gap-1 text-slate-300 hover:text-white transition active:scale-95"
+              title="Download editable DOCX"
+            >
+              <div className="bg-blue-600 text-white p-2.5 rounded-xl">
+                <FileText className="w-4.5 h-4.5" />
+              </div>
+              <span className="text-[10px] font-bold tracking-tight">MS Word</span>
+            </button>
+
+            {/* Print Action Button */}
+            <button
+              onClick={triggerPrintSOP}
+              type="button"
+              className="flex flex-col items-center gap-1 text-slate-300 hover:text-white transition active:scale-95"
+              title="Standard Print Worksheet"
+            >
+              <div className="bg-slate-700 text-slate-100 p-2.5 rounded-xl">
+                <Printer className="w-4.5 h-4.5" />
+              </div>
+              <span className="text-[10px] font-bold tracking-tight">Print</span>
+            </button>
+
+          </div>
+        </div>
+      )}
 
       {/* Link Deep load overlay Loader */}
       <AnimatePresence>
