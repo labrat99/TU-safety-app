@@ -4,11 +4,41 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { rateLimit } from "express-rate-limit";
+import { Firestore } from "@google-cloud/firestore";
 
 dotenv.config();
 
+// Initialize Firestore DB
+let dbConfig: any = {};
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    dbConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  }
+} catch (e) {
+  console.error("Failed to read firebase-applet-config.json:", e);
+}
+
+const db = new Firestore({
+  projectId: dbConfig.projectId || process.env.VERTEX_PROJECT_ID || "gen-lang-client-0848656474",
+  databaseId: dbConfig.firestoreDatabaseId || "ai-studio-c6bf251b-5b8c-4533-be64-6498816944e8",
+});
+
 const app = express();
+app.set("trust proxy", 1);
 const PORT = 3000;
+
+// Configure rate limiting for SOP generation to 10 requests per minute per IP
+const sopLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 10, // Limit each IP to 10 requests per window
+  standardHeaders: "draft-7", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: {
+    error: "Too many SOP generation requests from this IP, please try again after a minute.",
+  },
+});
 
 // Apply bodyParser middleware to handle large base64 image payloads from mobile phone captures
 app.use(express.json({ limit: "10mb" }));
@@ -41,7 +71,7 @@ if (vertexProject) {
 }
 
 // API Endpoints
-app.post("/api/generate-sop", async (req, res): Promise<any> => {
+app.post("/api/generate-sop", sopLimiter, async (req, res): Promise<any> => {
   try {
     if (!ai) {
       return res.status(500).json({
@@ -116,20 +146,21 @@ Verify all details thoroughly. Return the output as a fully filled, professional
     const textPart = { text: promptText };
 
     // Resilient model try loop with exponential retry to prevent 503 (temporary high demand) or 429 (quota exhausted) errors
-    const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+    const modelsToTry = ["gemini-2.5-flash", "gemini-flash-latest"];
     let response: any = null;
     let lastError: any = null;
 
     for (const modelName of modelsToTry) {
-      for (let attempt = 1; attempt <= 4; attempt++) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          console.log(`[Gemini Resilient Pipeline] Selected: ${modelName} (Attempt ${attempt}/4)`);
+          console.log(`[Gemini Resilient Pipeline] Selected: ${modelName} (Attempt ${attempt}/2)`);
           response = await ai.models.generateContent({
             model: modelName,
             contents: { parts: [imagePart, textPart] },
             config: {
               systemInstruction: "You are an expert Laboratory Safety Compliance Officer at Tulane University. You always supply deep, realistic, high-fidelity scientific data, safety precautions, and precise CAS numbers matching the scanned chemical.",
               responseMimeType: "application/json",
+              maxOutputTokens: 16384,
               responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -195,15 +226,15 @@ Verify all details thoroughly. Return the output as a fully filled, professional
           const msg = err.message || (err.error && err.error.message) || "";
           const errCode = err.code || (err.error && err.error.code) || 0;
           
-          console.warn(`[Gemini Resilient Pipeline] Attempt ${attempt}/4 failed for ${modelName}. Code: ${errCode}, Status: ${status}, Message: ${msg}`);
+          console.warn(`[Gemini Resilient Pipeline] Attempt ${attempt}/2 failed for ${modelName}. Code: ${errCode}, Status: ${status}, Message: ${msg}`);
 
           // Recognize transient errors
           const errStr = `${status} ${msg} ${errCode}`.toLowerCase();
           const isTransient = errStr.includes("503") || errStr.includes("429") || errStr.includes("limit") || errStr.includes("exhausted") || errStr.includes("temporary") || errStr.includes("busy") || errStr.includes("unavailable") || errStr.includes("demand");
 
-          if (isTransient && attempt < 4) {
+          if (isTransient && attempt < 2) {
             const delay = Math.pow(2, attempt) * 1200 + Math.random() * 800;
-            console.log(`[Gemini Resilient Pipeline] Transient issue. Waiting ${Math.round(delay)}ms (Attempt ${attempt}/4) before retry...`);
+            console.log(`[Gemini Resilient Pipeline] Transient issue. Waiting ${Math.round(delay)}ms (Attempt ${attempt}/2) before retry...`);
             await new Promise((resolve) => setTimeout(resolve, delay));
           } else {
             // Give up on this model, continue to the next model in our list
@@ -221,43 +252,26 @@ Verify all details thoroughly. Return the output as a fully filled, professional
     }
 
     const jsonText = response.text || "{}";
-    const sopData = JSON.parse(jsonText);
+    let sopData: any;
+    try {
+      sopData = JSON.parse(jsonText);
+    } catch (parseError: any) {
+      console.error("[JSON Parse Failure] Raw text was:", jsonText, parseError);
+      return res.status(500).json({ error: "The AI returned an unparseable response, please retry" });
+    }
 
     res.json({ success: true, sop: sopData });
   } catch (error: any) {
     console.error("SOP Generation Error:", error);
-    res.status(500).json({ error: error.message || "Failed to analyze chemical label and generate safety SOP." });
+    res.status(500).json({ 
+      error: error.message || "Failed to analyze chemical label and generate safety SOP.",
+      details: error.details || error.error || error
+    });
   }
 });
 
-const SOPS_FILE = path.join(process.cwd(), "sops.json");
-
-// Helper to read SOPs
-function readSopsFile(): Record<string, any> {
-  try {
-    if (fs.existsSync(SOPS_FILE)) {
-      const data = fs.readFileSync(SOPS_FILE, "utf-8");
-      return JSON.parse(data || "{}");
-    }
-  } catch (err) {
-    console.error("Error reading sops.json file:", err);
-  }
-  return {};
-}
-
-// Helper to write SOPs
-function writeSopsFile(id: string, sopRecord: any) {
-  try {
-    const sops = readSopsFile();
-    sops[id] = sopRecord;
-    fs.writeFileSync(SOPS_FILE, JSON.stringify(sops, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Error writing to sops.json:", err);
-  }
-}
-
 // POST /api/sop -> save SOP draft and return direct view URL for QR scanning
-app.post("/api/sop", (req, res): any => {
+app.post("/api/sop", async (req, res): Promise<any> => {
   try {
     const { id, metadata, sop, scannedAt, imageThumbnail } = req.body;
     if (!id || !sop) {
@@ -265,7 +279,7 @@ app.post("/api/sop", (req, res): any => {
     }
 
     const record = { id, metadata, sop, scannedAt, imageThumbnail };
-    writeSopsFile(id, record);
+    await db.collection("sops").doc(id).set(record);
 
     // Extract robust host for external mobile browser compatibility
     let devHost = (req.headers["x-forwarded-host"] as string) || req.headers["host"] || req.get("host") || "localhost:3000";
@@ -307,14 +321,15 @@ app.post("/api/sop", (req, res): any => {
 });
 
 // GET /api/sop/:id -> load saved SOP draft details
-app.get("/api/sop/:id", (req, res): any => {
+app.get("/api/sop/:id", async (req, res): Promise<any> => {
   try {
     const id = req.params.id;
-    const sops = readSopsFile();
-    const record = sops[id];
-    if (!record) {
+    const docRef = db.collection("sops").doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) {
       return res.status(404).json({ error: "Standard Operating Procedure record not found." });
     }
+    const record = doc.data();
     res.json({ success: true, record });
   } catch (err: any) {
     console.error("Failed to read SOP record:", err);

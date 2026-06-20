@@ -34,7 +34,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
-import { TulaneSOPData, SOPMetadata, SavedSOPRecord } from "./types";
+import { TulaneSOPData, SOPMetadata, SavedSOPRecord, FULL_DISCLAIMER, SHORT_DISCLAIMER } from "./types";
 import { PRESET_CHEMICALS, PresetChemical } from "./presets";
 import { generateSOPPdf } from "./lib/pdfGenerator";
 import { generateLocalOfflineSop, OfflineSopCategory } from "./lib/offlineGenerator";
@@ -143,6 +143,7 @@ export default function App() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
+  const [loadedViaQr, setLoadedViaQr] = useState(false);
   const [showVaultSavedAlert, setShowVaultSavedAlert] = useState(false);
   const [vaultSavedChemicalName, setVaultSavedChemicalName] = useState("");
   const [vaultSavedCasNumber, setVaultSavedCasNumber] = useState("");
@@ -351,6 +352,7 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const sopId = params.get("sopId");
     if (sopId) {
+      setLoadedViaQr(true);
       fetchAndLoadSop(sopId);
     }
 
@@ -767,7 +769,7 @@ export default function App() {
       console.error("Analysis Error:", err);
       const isQuota = err.message?.toLowerCase().includes("quota") || err.message?.toLowerCase().includes("exhausted") || err.message?.toLowerCase().includes("429") || err.message?.toLowerCase().includes("limit");
       const errMsg = isQuota 
-        ? "Shared Gemini API limit reached (HTTP 429: Resource Exhausted). Direct AI scanning is active on free shared tiers. To bypass this, you can click Settings to configure a personal GEMINI_API_KEY, or launch our EHS-compliant Offline Safe Draft Wizard below!"
+        ? "AI Lab Compliance Scientist API Quota Reached (HTTP 429: Resource Exhausted). The server-side Gemini API key has depleted prepay credits. Please configure or verify your GEMINI_API_KEY inside AI Studio Settings / environment variables, or launch our EHS-compliant Offline Safe Draft Wizard below!"
         : `Failed to generate SOP: ${err.message || err}`;
       
       setErrorMessage(errMsg);
@@ -940,9 +942,15 @@ export default function App() {
         </head>
         <body>
           <h1>Standard Operating Procedure (SOP)</h1>
-          <p style="font-size: 11.5pt; font-weight: bold; color: #15803d; margin-top: -8px; margin-bottom: 24px;">
+          <p style="font-size: 11.5pt; font-weight: bold; color: #15803d; margin-top: -8px; margin-bottom: 20px;">
             Tulane University Office of Environmental Health & Safety (EHS) Compliance Workstation
           </p>
+
+          <div style="background-color: #fee2e2; border-left: 4px solid #ef4444; padding: 12px; margin-bottom: 24px; border: 1px solid #fecaca; border-radius: 4px;">
+            <p style="font-size: 10pt; font-weight: bold; color: #991b1b; margin: 0; line-height: 1.4;">
+              ${FULL_DISCLAIMER}
+            </p>
+          </div>
           
           <table class="meta-table">
             <tr>
@@ -1236,6 +1244,13 @@ ${sopData.regulatoryReferences}
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col selection:bg-emerald-100 selection:text-emerald-900">
       
+      {loadedViaQr && (
+        <div className="bg-amber-500 text-amber-950 px-4 py-2 font-bold text-center text-xs shadow-md border-b border-amber-600 no-print flex items-center justify-center gap-2 relative z-50">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{SHORT_DISCLAIMER}</span>
+        </div>
+      )}
+      
       {/* HEADER SECTION (Hidden when printing via index.css) */}
       <header className="bg-emerald-900 text-white shadow-md border-b-4 border-amber-500 no-print">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
@@ -1303,11 +1318,7 @@ ${sopData.regulatoryReferences}
 
       {/* EMERGENCY SAFETY BULLETBAR (Only visible when not printing) */}
       <div className="bg-amber-50 border-b border-amber-200 py-2 px-4 no-print">
-        <div className="max-w-7xl mx-auto flex items-center justify-between text-xs text-amber-800 flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span><strong>Federal Guideline Checklist:</strong> All hazardous reagent processes at Tulane must maintain standard safety drafts. Distilled ethers and corrosives demand strict review.</span>
-          </div>
+        <div className="max-w-7xl mx-auto flex items-center justify-end text-xs text-amber-800 flex-wrap gap-2">
           <div className="flex gap-4">
             <span>Tulane OEHS: <strong>OEHS@tulane.edu</strong></span>
             <span>Emergency: <strong>911 / (504) 865-5200</strong></span>
@@ -2046,6 +2057,21 @@ ${sopData.regulatoryReferences}
                   </div>
                 </div>
 
+                {/* AI DISCLAIMER BANNER (Visible on screen, hidden in browser print) */}
+                <div className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-4 shadow-sm no-print">
+                  <div className="flex gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1">
+                        AI-generated draft — For review only
+                      </p>
+                      <p className="text-xs text-amber-700 font-medium leading-relaxed">
+                        {FULL_DISCLAIMER}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* THE DUAL MODES WORKSTATION WORKSPACE */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                   
@@ -2571,6 +2597,23 @@ ${sopData.regulatoryReferences}
                       <span className="text-[10px] font-mono text-neutral-400 no-print">Printed Format Template</span>
                     </div>
 
+                    {/* Vault Saved-SOP Disclaimer Banner */}
+                    {activeRecordId && (
+                      <div className="bg-amber-50 border border-amber-300 rounded-lg p-3.5 mb-5 text-neutral-800 no-print">
+                        <div className="flex gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-0.5">
+                              Saved Vault SOP — Draft Review
+                            </p>
+                            <p className="text-[11px] text-amber-700 font-medium leading-relaxed">
+                              {FULL_DISCLAIMER}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* METADATA FORM TABLE GRID (Exactly replicating the PDF template first page header) */}
                     <div className="border-1.5 border-black text-xs font-sans mb-6 printable-header-grid w-full">
                       
@@ -2706,7 +2749,7 @@ ${sopData.regulatoryReferences}
                             {sopData.hazards.length === 0 ? (
                               <span className="text-[10px] text-neutral-400 font-mono tracking-wider">No GHS hazards declared</span>
                             ) : (
-                              sopData.hazards.map((tag) => {
+                              sopData.hazards.map((tag, tagIdx) => {
                                 const normal = tag.toLowerCase().trim();
                                 let icon = null;
                                 let code = "";
@@ -2729,7 +2772,7 @@ ${sopData.regulatoryReferences}
                                 }
 
                                 return (
-                                  <div key={tag} className="flex flex-col items-center gap-1 shrink-0 select-none">
+                                  <div key={`${tag}-${tagIdx}`} className="flex flex-col items-center gap-1 shrink-0 select-none">
                                     <div className="w-6 h-6 border-2 border-red-650 bg-white rotate-45 flex items-center justify-center shadow-2xs text-neutral-900">
                                       <div className="-rotate-45 flex items-center justify-center">
                                         {icon}
@@ -2748,7 +2791,7 @@ ${sopData.regulatoryReferences}
                         {/* Print-only version of GHS Diamond Pictograms (to ensure absolute crisp layout on paper print) */}
                         {sopData.hazards.length > 0 && (
                           <div className="hidden print:flex items-center gap-5 my-2">
-                            {sopData.hazards.map((tag) => {
+                            {sopData.hazards.map((tag, tagIdx) => {
                               const normal = tag.toLowerCase().trim();
                               let icon = null;
                               let code = "";
@@ -2771,7 +2814,7 @@ ${sopData.regulatoryReferences}
                               }
 
                               return (
-                                <div key={tag} className="flex items-center gap-2 border border-neutral-350 py-1 px-1.5 rounded bg-neutral-50/50">
+                                <div key={`${tag}-${tagIdx}`} className="flex items-center gap-2 border border-neutral-350 py-1 px-1.5 rounded bg-neutral-50/50">
                                   <div className="w-5 h-5 border border-red-650 bg-white rotate-45 flex items-center justify-center shadow-2xs scale-90">
                                     <div className="-rotate-45 flex items-center justify-center">
                                       {icon}
@@ -2786,24 +2829,24 @@ ${sopData.regulatoryReferences}
                         
                         {/* Dynamic tags parsed with inline icons */}
                         <div className="flex flex-wrap gap-1.5 font-sans">
-                          {sopData.hazards.map((tag) => {
-                            const normal = tag.toLowerCase().trim();
-                            let miniIcon = null;
-                            if (normal.includes("flam")) miniIcon = <Flame className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
-                            else if (normal.includes("toxic")) miniIcon = <Skull className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
-                            else if (normal.includes("corros")) miniIcon = <Droplet className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
-                            else if (normal.includes("react")) miniIcon = <Zap className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
-                            else miniIcon = <ShieldAlert className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                          {sopData.hazards.map((tag, tagIdx) => {
+                              const normal = tag.toLowerCase().trim();
+                              let miniIcon = null;
+                              if (normal.includes("flam")) miniIcon = <Flame className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                              else if (normal.includes("toxic")) miniIcon = <Skull className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                              else if (normal.includes("corros")) miniIcon = <Droplet className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                              else if (normal.includes("react")) miniIcon = <Zap className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
+                              else miniIcon = <ShieldAlert className="w-3 h-3 text-red-650 mr-1 shrink-0" />;
 
-                            return (
-                              <span 
-                                key={tag} 
-                                className="bg-red-50 text-red-950 text-[10px] font-bold border border-red-200 rounded py-0.5 px-2.5 uppercase tracking-wider flex items-center shadow-2xs"
-                              >
-                                {miniIcon}
-                                {tag}
-                              </span>
-                            );
+                              return (
+                                <span 
+                                  key={`${tag}-${tagIdx}`} 
+                                  className="bg-red-50 text-red-950 text-[10px] font-bold border border-red-200 rounded py-0.5 px-2.5 uppercase tracking-wider flex items-center shadow-2xs"
+                                >
+                                  {miniIcon}
+                                  {tag}
+                                </span>
+                              );
                           })}
                         </div>
 
@@ -3365,9 +3408,9 @@ ${sopData.regulatoryReferences}
 
                         {/* Hazards indicators */}
                         <div className="flex flex-wrap gap-1 max-w-[50%] justify-end">
-                          {record.sop.hazards.slice(0, 2).map((h) => (
+                          {record.sop.hazards.slice(0, 2).map((h, hIdx) => (
                             <span 
-                              key={h} 
+                              key={`${h}-${hIdx}`} 
                               className="text-[8px] font-bold border border-red-200 text-red-700 bg-red-50 rounded px-1"
                             >
                               {h}

@@ -44,3 +44,7 @@ export interface SavedSOPRecord {
   scannedAt: string;
   imageThumbnail?: string; // Base64 thumbnail for visual recall
 }
+
+export const FULL_DISCLAIMER = "AI-GENERATED DRAFT — FOR REVIEW ONLY. This SOP was drafted by an AI tool from a chemical label image and has NOT been verified or approved. All values — particularly the CAS number, hazard classifications, chemical incompatibilities, PPE, and first-aid procedures — must be verified against the manufacturer's Safety Data Sheet (SDS) and approved and signed by the Principal Investigator and Tulane OEHS before any laboratory use. This is NOT an official EHS-approved document.";
+
+export const SHORT_DISCLAIMER = "AI-generated draft — unverified. Confirm all values against the SDS; not valid until reviewed and signed by PI and Tulane OEHS.";
